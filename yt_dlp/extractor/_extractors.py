@@ -1988,6 +1988,7 @@ from .storyfire import (
     StoryFireSeriesIE,
     StoryFireUserIE,
 )
+from .streaks import StreaksIE
 from .streamable import StreamableIE
 from .streamcz import StreamCZIE
 from .streetvoice import StreetVoiceIE
@@ -2205,7 +2206,12 @@ from .tvc import (
     TVCIE,
     TVCArticleIE,
 )
-from .tver import TVerIE
+from .tver import (
+    TVerIE,
+    TVerLiveIE,
+    TVerPlaylistIE,
+    TVerSearchIE,
+)
 from .tvigle import TvigleIE
 from .tviplayer import TVIPlayerIE
 from .tvland import TVLandIE
