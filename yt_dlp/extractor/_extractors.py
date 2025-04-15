@@ -1348,6 +1348,7 @@ from .nick import (
     NickRuIE,
 )
 from .niconico import (
+    NiconicoChannelIE,
     NiconicoHistoryIE,
     NiconicoIE,
     NiconicoLiveIE,
