@@ -1155,7 +1155,7 @@ class NiconicoChannelIE(NiconicoBaseIE):
 
         path = {
             'search': f'search/{playlist_id}',
-            'video': f'{playlist_id}{url.rpartition(playlist_id)[-1].partition('?')[0]}',
+            'video': f'{playlist_id}{url.rpartition(playlist_id)[-1].partition("?")[0]}',
         }[playlist_type]
         webpage = self._download_webpage(url, playlist_id)
 
