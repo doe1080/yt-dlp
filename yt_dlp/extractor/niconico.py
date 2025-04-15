@@ -12,8 +12,10 @@ from ..networking.exceptions import HTTPError
 from ..utils import (
     ExtractorError,
     OnDemandPagedList,
+    UnsupportedError,
     clean_html,
     determine_ext,
+    extract_attributes,
     float_or_none,
     int_or_none,
     join_nonempty,
@@ -24,24 +26,93 @@ from ..utils import (
     qualities,
     remove_start,
     str_or_none,
-    traverse_obj,
     try_get,
     unescapeHTML,
-    unified_timestamp,
     update_url_query,
     url_basename,
     url_or_none,
     urlencode_postdata,
     urljoin,
 )
+from ..utils.traversal import (
+    find_element,
+    find_elements,
+    traverse_obj,
+)
 
 
-class NiconicoIE(InfoExtractor):
+class NiconicoBaseIE(InfoExtractor):
+    _GEO_BYPASS = False
+    _GEO_COUNTRIES = ['JP']
+    _LOGIN_BASE = 'https://account.nicovideo.jp'
+    _NETRC_MACHINE = 'niconico'
+
+    def raise_login_error(self, error, default, expected=True):
+        raise ExtractorError(f'Unable to login: {error or default}', expected=expected)
+
+    def _perform_login(self, username, password):
+        if self._get_cookies('https://www.nicovideo.jp').get('user_session'):
+            return
+
+        self._request_webpage(
+            f'{self._LOGIN_BASE}/login', None, 'Requesting session cookies')
+        webpage = self._download_webpage(
+            f'{self._LOGIN_BASE}/login/redirector', None,
+            'Logging in', headers={
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'Referer': f'{self._LOGIN_BASE}/login',
+            }, data=urlencode_postdata({
+                'mail_tel': username,
+                'password': password,
+            }),
+        )
+
+        if traverse_obj(self._search_json(
+            r'NicoGoogleTagManagerDataLayer\s*=\s*\[',
+            webpage, 'data layer', None, fatal=False,
+        ), ('user', 'login_status', {lambda x: x == 'login'})):
+            return
+
+        if err_msg := traverse_obj(webpage, (
+            {find_element(cls='notice error')}, {find_element(cls='notice__text')}, {clean_html},
+        )):
+            self.raise_login_error(err_msg, 'Invalid username or password')
+        elif 'oneTimePw' in webpage:
+            post_url = self._search_regex(
+                r'<form[^>]+action=(["\'])(?P<url>.+?)\1', webpage, 'post url', group='url')
+            mfa, urlh = self._download_webpage_handle(
+                urljoin(self._LOGIN_BASE, post_url), None,
+                'Performing MFA', 'Unable to complete MFA', headers={
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                }, data=urlencode_postdata({
+                    'otp': self._get_tfa_info('6 digit number shown on app'),
+                }),
+            )
+
+            if 'error-code' in parse_qs(urlh.url):
+                err_msg = traverse_obj(self._download_webpage(urlh.url, None), (
+                    {find_element(cls='pageMainMsg')}, {clean_html}))
+                self.raise_login_error(err_msg, 'MFA session expired')
+            if 'formError' in mfa:
+                err_msg = traverse_obj(mfa, (
+                    {find_element(cls='formError')}, {find_element(tag='div')}, {clean_html}))
+                self.raise_login_error(err_msg, 'MFA challenge failed')
+        else:
+            self.raise_login_error(None, 'Unexpected login error', expected=False)
+
+
+class NiconicoIE(NiconicoBaseIE):
     IE_NAME = 'niconico'
     IE_DESC = 'ニコニコ動画'
-    _GEO_COUNTRIES = ['JP']
-    _GEO_BYPASS = False
 
+    _API_HEADERS = {
+        'X-Frontend-ID': '6',
+        'X-Frontend-Version': '0',
+        'X-Niconico-Language': 'en-us',
+        'Referer': 'https://www.nicovideo.jp/',
+        'Origin': 'https://www.nicovideo.jp',
+    }
+    _VALID_URL = r'https?://(?:(?:(?:secure|sp|www)\.)?nicovideo\.jp/watch|nico\.ms)/(?P<id>(?:[a-z]{2})?[0-9]+)'
     _TESTS = [{
         'url': 'http://www.nicovideo.jp/watch/sm22312215',
         'info_dict': {
@@ -179,56 +250,6 @@ class NiconicoIE(InfoExtractor):
         'only_matching': True,
     }]
 
-    _VALID_URL = r'https?://(?:(?:www\.|secure\.|sp\.)?nicovideo\.jp/watch|nico\.ms)/(?P<id>(?:[a-z]{2})?[0-9]+)'
-    _NETRC_MACHINE = 'niconico'
-    _API_HEADERS = {
-        'X-Frontend-ID': '6',
-        'X-Frontend-Version': '0',
-        'X-Niconico-Language': 'en-us',
-        'Referer': 'https://www.nicovideo.jp/',
-        'Origin': 'https://www.nicovideo.jp',
-    }
-
-    def _perform_login(self, username, password):
-        login_ok = True
-        login_form_strs = {
-            'mail_tel': username,
-            'password': password,
-        }
-        self._request_webpage(
-            'https://account.nicovideo.jp/login', None,
-            note='Acquiring Login session')
-        page = self._download_webpage(
-            'https://account.nicovideo.jp/login/redirector?show_button_twitter=1&site=niconico&show_button_facebook=1', None,
-            note='Logging in', errnote='Unable to log in',
-            data=urlencode_postdata(login_form_strs),
-            headers={
-                'Referer': 'https://account.nicovideo.jp/login',
-                'Content-Type': 'application/x-www-form-urlencoded',
-            })
-        if 'oneTimePw' in page:
-            post_url = self._search_regex(
-                r'<form[^>]+action=(["\'])(?P<url>.+?)\1', page, 'post url', group='url')
-            page = self._download_webpage(
-                urljoin('https://account.nicovideo.jp', post_url), None,
-                note='Performing MFA', errnote='Unable to complete MFA',
-                data=urlencode_postdata({
-                    'otp': self._get_tfa_info('6 digits code'),
-                }), headers={
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                })
-            if 'oneTimePw' in page or 'formError' in page:
-                err_msg = self._html_search_regex(
-                    r'formError["\']+>(.*?)</div>', page, 'form_error',
-                    default='There\'s an error but the message can\'t be parsed.',
-                    flags=re.DOTALL)
-                self.report_warning(f'Unable to log in: MFA challenge failed, "{err_msg}"')
-                return False
-        login_ok = 'class="notice error"' not in page
-        if not login_ok:
-            self.report_warning('Unable to log in: bad username or password')
-        return login_ok
-
     def _get_heartbeat_info(self, info_dict):
         video_id, video_src_id, audio_src_id = info_dict['url'].split(':')[1].split('/')
         dmc_protocol = info_dict['expected_protocol']
@@ -358,7 +379,6 @@ class NiconicoIE(InfoExtractor):
         return info_dict, heartbeat_info_dict
 
     def _extract_format_for_quality(self, video_id, audio_quality, video_quality, dmc_protocol):
-
         if not audio_quality.get('isAvailable') or not video_quality.get('isAvailable'):
             return None
 
@@ -986,7 +1006,6 @@ class NiconicoLiveIE(InfoExtractor):
                     'quality': 'abr',
                     'protocol': 'hls+fmp4',
                     'latency': latency,
-                    'accessRightMethod': 'single_cookie',
                     'chasePlay': False,
                 },
                 'room': {
@@ -1007,7 +1026,6 @@ class NiconicoLiveIE(InfoExtractor):
             if data.get('type') == 'stream':
                 m3u8_url = data['data']['uri']
                 qualities = data['data']['availableQualities']
-                cookies = data['data']['cookies']
                 break
             elif data.get('type') == 'disconnect':
                 self.write_debug(recv)
@@ -1046,11 +1064,6 @@ class NiconicoLiveIE(InfoExtractor):
                     **res,
                 })
 
-        for cookie in cookies:
-            self._set_cookie(
-                cookie['domain'], cookie['name'], cookie['value'],
-                expire_time=unified_timestamp(cookie['expires']), path=cookie['path'], secure=cookie['secure'])
-
         formats = self._extract_m3u8_formats(m3u8_url, video_id, ext='mp4', live=True)
         for fmt, q in zip(formats, reversed(qualities[1:])):
             fmt.update({
@@ -1079,3 +1092,82 @@ class NiconicoLiveIE(InfoExtractor):
             'thumbnails': thumbnails,
             'formats': formats,
         }
+
+
+class NiconicoChannelIE(NiconicoBaseIE):
+    IE_NAME = 'niconico:channel'
+
+    _VALID_URL = [
+        r'https?://ch\.nicovideo\.jp/(?P<id>[\w-]+)/(?P<type>video)/?(?P<slug>continuation|member|pay|so\d{8})?(?:[/?#]|$)',
+        r'https?://ch\.nicovideo\.jp/(?P<type>search)/(?P<id>[^/?#]+)',
+    ]
+    _TESTS = [{
+        'url': 'https://ch.nicovideo.jp/higurashianime/video',
+        'info_dict': {
+            'id': 'higurashianime',
+            'title': '「ひぐらしのなく頃に」オフィシャルチャンネル',
+        },
+        'playlist_mincount': 54,
+    }, {
+        'url': 'https://ch.nicovideo.jp/higurashianime/video',
+        'info_dict': {
+            'id': 'higurashianime',
+            'title': '「ひぐらしのなく頃に」オフィシャルチャンネル',
+        },
+        'playlist_mincount': 54,
+    }, {
+        'url': 'https://ch.nicovideo.jp/mokou1/video/member',
+        'only_matching': True,
+    }, {
+        'url': 'https://ch.nicovideo.jp/search/%E8%96%84%E4%BA%95%E5%8F%8B%E9%87%8C?channel_id=ch2647680&type=video',
+        'info_dict': {
+            'id': '薄井友里',
+            'title': 'ベルガモTALKS',
+        },
+        'playlist_mincount': 49,
+    }, {
+        'url': 'https://ch.nicovideo.jp/amiami-ch/video/so44060088',
+        'only_matching': True,
+    }]
+
+    def _entries(self, playlist_id, pages, path, query):
+        for page in pages:
+            webpage = self._download_webpage(
+                f'https://ch.nicovideo.jp/{path}', playlist_id,
+                f'Downloading page {page}', query={'page': page, **query})
+            for url in traverse_obj(webpage, (
+                {find_elements(cls='watchLink', html=True)},
+                ..., {extract_attributes}, 'href', {url_or_none},
+            )):
+                yield self.url_result(url, NiconicoIE)
+
+    def _real_extract(self, url):
+        playlist_id, playlist_type = self._match_valid_url(url).group('id', 'type')
+        query = {k: v[0] for k, v in parse_qs(url).items() if v}
+
+        if playlist_type == 'search':
+            if query.get('type') != 'video':
+                raise UnsupportedError(url)
+            playlist_id = urllib.parse.unquote(playlist_id)
+        elif (slug := self._match_valid_url(url).group('slug')) and slug.startswith('so'):
+            return self.url_result(
+                f'https://www.nicovideo.jp/watch/{slug}', NiconicoIE)
+
+        path = {
+            'search': f'search/{playlist_id}',
+            'video': f'{playlist_id}{url.rpartition(playlist_id)[-1].partition('?')[0]}',
+        }[playlist_type]
+        webpage = self._download_webpage(url, playlist_id)
+
+        if page := query.pop('page', None):
+            pages = [int(page)]
+        else:
+            total_page = traverse_obj(webpage, (
+                tuple({find_element(cls=cls)} for cls in ('c-videoList', 'c-videoListPager', 'pages')),
+                {find_elements(tag='option', attr='value', value=r'\d+', html=True, regex=True)},
+                ..., {extract_attributes}, 'value', {int_or_none}, all, {max})) or 1
+            pages = range(1, total_page + 1)
+
+        return self.playlist_result(
+            self._entries(playlist_id, pages, path, query),
+            playlist_id, self._html_search_meta('og:site_name', webpage))
