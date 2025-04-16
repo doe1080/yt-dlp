@@ -1266,7 +1266,7 @@ class NiconicoLiveIE(NiconicoBaseIE):
                 for name, img_url in value.items():
                     res = parse_resolution(name, lenient=True) or parse_resolution(img_url, lenient=True)
                     thumbnails.append({
-                        'id': f'{name}_{res.get('width')}x{res.get('height')}',
+                        'id': f'{name}_{res.get("width")}x{res.get("height")}',
                         'ext': traverse_obj(parse_qs(img_url), ('image', 0, {determine_ext(default_ext='jpg')})),
                         'url': img_url,
                         **res,
