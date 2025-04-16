@@ -4,16 +4,16 @@ import itertools
 import json
 import re
 import time
-import urllib.parse
 
 from .common import InfoExtractor, SearchInfoExtractor
-from ..networking import Request
+from ..networking import PATCHRequest
 from ..networking.exceptions import HTTPError
 from ..utils import (
     ExtractorError,
     OnDemandPagedList,
     clean_html,
     determine_ext,
+    extract_attributes,
     float_or_none,
     int_or_none,
     join_nonempty,
@@ -24,9 +24,8 @@ from ..utils import (
     qualities,
     remove_start,
     str_or_none,
-    traverse_obj,
+    truncate_string,
     try_get,
-    unescapeHTML,
     unified_timestamp,
     update_url_query,
     url_basename,
@@ -34,13 +33,72 @@ from ..utils import (
     urlencode_postdata,
     urljoin,
 )
+from ..utils.traversal import find_element, traverse_obj
 
 
-class NiconicoIE(InfoExtractor):
+class NiconicoBaseIE(InfoExtractor):
+    _GEO_BYPASS = False
+    _GEO_COUNTRIES = ['JP']
+    _LOGIN_BASE = 'https://account.nicovideo.jp'
+    _NETRC_MACHINE = 'niconico'
+
+    def raise_login_error(self, error, default, expected=True):
+        raise ExtractorError(f'Unable to login: {error or default}', expected=expected)
+
+    def _perform_login(self, username, password):
+        if self._get_cookies('https://www.nicovideo.jp').get('user_session'):
+            return
+
+        self._request_webpage(
+            f'{self._LOGIN_BASE}/login', None, 'Requesting session cookies')
+        webpage = self._download_webpage(
+            f'{self._LOGIN_BASE}/login/redirector', None,
+            'Logging in', headers={
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'Referer': f'{self._LOGIN_BASE}/login',
+            }, data=urlencode_postdata({
+                'mail_tel': username,
+                'password': password,
+            }),
+        )
+
+        if traverse_obj(self._search_json(
+            r'NicoGoogleTagManagerDataLayer\s*=\s*\[',
+            webpage, 'data layer', None, fatal=False,
+        ), ('user', 'login_status', {lambda x: x == 'login'})):
+            return
+
+        if err_msg := traverse_obj(webpage, (
+            {find_element(cls='notice error')}, {find_element(cls='notice__text')}, {clean_html},
+        )):
+            self.raise_login_error(err_msg, 'Invalid username or password')
+        elif 'oneTimePw' in webpage:
+            post_url = self._search_regex(
+                r'<form[^>]+action=(["\'])(?P<url>.+?)\1', webpage, 'post url', group='url')
+            mfa, urlh = self._download_webpage_handle(
+                urljoin(self._LOGIN_BASE, post_url), None,
+                'Performing MFA', 'Unable to complete MFA', headers={
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                }, data=urlencode_postdata({
+                    'otp': self._get_tfa_info('6 digit number shown on app'),
+                }),
+            )
+
+            if 'error-code' in parse_qs(urlh.url):
+                err_msg = traverse_obj(self._download_webpage(urlh.url, None), (
+                    {find_element(cls='pageMainMsg')}, {clean_html}))
+                self.raise_login_error(err_msg, 'MFA session expired')
+            if 'formError' in mfa:
+                err_msg = traverse_obj(mfa, (
+                    {find_element(cls='formError')}, {find_element(tag='div')}, {clean_html}))
+                self.raise_login_error(err_msg, 'MFA challenge failed')
+        else:
+            self.raise_login_error(None, 'Unexpected login error', expected=False)
+
+
+class NiconicoIE(NiconicoBaseIE):
     IE_NAME = 'niconico'
     IE_DESC = 'ニコニコ動画'
-    _GEO_COUNTRIES = ['JP']
-    _GEO_BYPASS = False
 
     _TESTS = [{
         'url': 'http://www.nicovideo.jp/watch/sm22312215',
@@ -921,27 +979,83 @@ class NiconicoUserIE(InfoExtractor):
         return self.playlist_result(self._entries(list_id), list_id)
 
 
-class NiconicoLiveIE(InfoExtractor):
+class NiconicoLiveIE(NiconicoBaseIE):
     IE_NAME = 'niconico:live'
     IE_DESC = 'ニコニコ生放送'
-    _VALID_URL = r'https?://(?:sp\.)?live2?\.nicovideo\.jp/(?:watch|gate)/(?P<id>lv\d+)'
+
+    _API_URL = 'https://live2.nicovideo.jp{}/api/v2/programs/{}'
+    _BASE_URL = 'https://live.nicovideo.jp'
+    _VALID_URL = r'https?://(?:cas|(?:sp\.)?live2?)\.nicovideo\.jp/?(?:embed|gate|watch)?/(?P<id>lv\d+)'
     _TESTS = [{
-        'note': 'this test case includes invisible characters for title, pasting them as-is',
-        'url': 'https://live.nicovideo.jp/watch/lv339533123',
+        'url': 'https://live.nicovideo.jp/watch/lv347134877',
         'info_dict': {
-            'id': 'lv339533123',
-            'title': '激辛ペヤング食べます\u202a( ;ᯅ; )\u202c（歌枠オーディション参加中）',
-            'view_count': 1526,
-            'comment_count': 1772,
-            'description': '初めましてもかって言います❕\nのんびり自由に適当に暮らしてます',
-            'uploader': 'もか',
-            'channel': 'ゲストさんのコミュニティ',
-            'channel_id': 'co5776900',
-            'channel_url': 'https://com.nicovideo.jp/community/co5776900',
-            'timestamp': 1670677328,
-            'is_live': True,
+            'id': 'lv347134877',
+            'ext': 'mp4',
+            'title': '暗黒放送\u3000よう！久々だな\u3000放送',
+            'categories': 'count:2',
+            'channel': '横山緑（本物）',
+            'channel_id': '132960095',
+            'channel_url': 'http://www.nicovideo.jp/user/132960095',
+            'comment_count': int,
+            'description': '暗黒放送ではギフト禁止、暗黒ルールに従う',
+            'live_status': 'was_live',
+            'release_date': '20250226',
+            'release_timestamp': 1740572966,
+            'tags': list,
+            'thumbnail': r're:https?://.+',
+            'timestamp': 1740572966,
+            'upload_date': '20250226',
+            'uploader': '横山緑（本物）',
+            'uploader_id': '132960095',
+            'view_count': int,
+            'webpage_url': 'https://live.nicovideo.jp/watch/lv347134877',
         },
-        'skip': 'livestream',
+        'skip': True,
+    }, {
+        'url': 'https://live.nicovideo.jp/watch/lv329299587',
+        'info_dict': {
+            'id': 'lv329299587',
+            'ext': 'mp4',
+            'title': 'こんな時こそお家で薪燃え -薪燃え24時間生放送2020-',
+            'channel': 'ニコニコエンタメチャンネル',
+            'channel_id': 'ch2640322',
+            'channel_url': 'https://ch.nicovideo.jp/channel/ch2640322',
+            'comment_count': int,
+            'description': 'md5:281edd7f00309e99ec46a87fb16d7033',
+            'live_status': 'was_live',
+            'release_date': '20201224',
+            'release_timestamp': 1608804000,
+            'tags': 'count:10',
+            'thumbnail': r're:https?://.+',
+            'timestamp': 1608803400,
+            'upload_date': '20201224',
+            'uploader': '株式会社ドワンゴ',
+            'view_count': int,
+        },
+        'skip': True,
+    }, {
+        'url': 'https://live.nicovideo.jp/watch/lv333305516',
+        'info_dict': {
+            'id': 'lv333305516',
+            'ext': 'mp4',
+            'title': '【本編】MOODYZ presents 楪カレンのDVD鑑賞会',
+            'age_limit': 18,
+            'channel': 'みんなのおもちゃ REBOOT',
+            'channel_id': 'ch2642088',
+            'channel_url': 'https://ch.nicovideo.jp/channel/ch2642088',
+            'comment_count': int,
+            'description': 'md5:edb36e83b6cc7c8e6fea6ee960c5f36d',
+            'live_status': 'was_live',
+            'release_date': '20210917',
+            'release_timestamp': 1631890800,
+            'tags': 'count:5',
+            'thumbnail': r're:https?://.+',
+            'timestamp': 1631890200,
+            'upload_date': '20210917',
+            'uploader': '株式会社ドワンゴ',
+            'view_count': int,
+        },
+        'skip': True,
     }, {
         'url': 'https://live2.nicovideo.jp/watch/lv339533123',
         'only_matching': True,
@@ -953,48 +1067,136 @@ class NiconicoLiveIE(InfoExtractor):
         'only_matching': True,
     }]
 
-    _KNOWN_LATENCY = ('high', 'low')
+    def _check_status(self, response):
+        status = traverse_obj(response, ('meta', 'status', {int}))
+        err_code = traverse_obj(response, ('meta', 'errorCode', {str}))
+        if status != 200:
+            raise ExtractorError(
+                join_nonempty(status, err_code, delim=': '), expected=True)
 
     def _real_extract(self, url):
         video_id = self._match_id(url)
-        webpage, urlh = self._download_webpage_handle(f'https://live.nicovideo.jp/watch/{video_id}', video_id)
+        webpage_url = f'{self._BASE_URL}/watch/{video_id}'
+        webpage, urlh = self._download_webpage_handle(webpage_url, video_id, expected_status=404)
+        if err_msg := traverse_obj(webpage, (
+            {find_element(cls='message')}, {clean_html},
+        )):
+            raise ExtractorError(err_msg, expected=True)
 
-        embedded_data = self._parse_json(unescapeHTML(self._search_regex(
-            r'<script\s+id="embedded-data"\s*data-props="(.+?)"', webpage, 'embedded data')), video_id)
+        if (age_limit := 18 if 'age_auth' in urlh.url else None):
+            my = self._download_webpage(
+                'https://www.nicovideo.jp/my', None, 'Checking age verification')
+            if traverse_obj(my, (
+                {find_element(tag='div', id='js-initial-userpage-data', html=True)},
+                {extract_attributes}, 'data-environment', {json.loads}, 'allowSensitiveContents',
+            )):
+                self._set_cookie('.nicovideo.jp', 'age_auth', '1')
+                webpage, urlh = self._download_webpage_handle(webpage_url, video_id)
+            else:
+                raise ExtractorError('Age restricted content', expected=True)
 
-        ws_url = traverse_obj(embedded_data, ('site', 'relive', 'webSocketUrl'))
-        if not ws_url:
-            raise ExtractorError('The live hasn\'t started yet or already ended.', expected=True)
-        ws_url = update_url_query(ws_url, {
-            'frontend_id': traverse_obj(embedded_data, ('site', 'frontendId')) or '9',
-        })
+        embedded_data = traverse_obj(webpage, (
+            {find_element(tag='script', id='embedded-data', html=True)},
+            {extract_attributes}, 'data-props', {json.loads},
+        ))
 
-        hostname = remove_start(urllib.parse.urlparse(urlh.url).hostname, 'sp.')
-        latency = try_get(self._configuration_arg('latency'), lambda x: x[0])
-        if latency not in self._KNOWN_LATENCY:
-            latency = 'high'
+        if traverse_obj(embedded_data, ('programAccessControl', 'visibilityType', {str})) == 'password':
+            password = self.get_param('videopassword')
+            if not password:
+                raise ExtractorError(
+                    'Password protected video, use --video-password <password>', expected=True)
+            if not re.fullmatch(r'[A-Za-z0-9]{1,16}', password):
+                raise ExtractorError(
+                    'Password must be 1-16 alphanumeric characters')
 
+            permission = self._download_json(
+                self._API_URL.format('/unama', f'{video_id}/password/permission'),
+                video_id, headers={
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-Niconico-Session': 'cookie',
+                }, data=json.dumps({
+                    'password': str(password),
+                }).encode(), expected_status=400,
+            )
+            self._check_status(permission)
+
+        frontend_id = traverse_obj(embedded_data, (
+            'site', 'frontendId', {str_or_none}), default='9')
+
+        reservation_url = self._API_URL.format('', f'{video_id}/timeshift/reservation')
+        if traverse_obj(embedded_data, ('userProgramTimeshiftWatch', 'status', {str_or_none})) is not None:
+            if not traverse_obj(embedded_data, (
+                'userProgramReservation', 'isReserved', {bool},
+            )):
+                reservation = self._download_json(
+                    reservation_url, video_id, headers={
+                        'Accept': 'application/json',
+                        'X-Frontend-Id': frontend_id,
+                    }, data=b'{}', expected_status=403,
+                )
+                self._check_status(reservation)
+
+            patch = self._download_json(
+                PATCHRequest(reservation_url), video_id)
+            self._check_status(patch)
+            return self.url_result(webpage_url)
+
+        REJECT_REASONS = {
+            'notactivatedbypassword': 'Password entry required',
+            'notactivatedbyserial': 'Serial code entry required',
+            'notallowedcountry': 'This program is not available in your country or region',
+            'notchannelmember': 'Channel membership required',
+            'notcommunitymember': 'Community membership required',
+            'nothavepayticket': 'Ticket purchase required',
+            'nothavepayticketandnotactivatedbyserial': 'Ticket purchase or serial activation required',
+            'nothavetimeshiftticket': 'Timeshift ticket required',
+            'notimeshiftprogram': 'Timeshift is not public',
+            'notlogin': 'Please log in',
+            'notsocialgroupmember': 'Social group membership required',
+            'notusetimeshiftticket': 'Without reservation, premium membership is required',
+            'notusetimeshiftticketononcetimeshift': 'Without reservation, premium membership is required',
+            'notusetimeshiftticketonunlimitedtimeshift': 'Without reservation, premium membership is required',
+            'passwordauthrequired': 'Password authentication required',
+            'programnotbegun': 'Please wait until this program begins',
+            'timeshiftbeforeopen': 'Timeshift is not yet available',
+            'timeshiftclosed': 'Timeshift period has ended',
+            'timeshiftclosedandnotfollow': 'Timeshift period has ended; follow for broadcast start notifications',
+            'timeshiftticketexpired': 'Timeshift ticket has expired',
+        }
+        if reasons := traverse_obj(embedded_data, (
+            'userProgramWatch', 'rejectedReasons', ..., {str},
+        )):
+            if err_msgs := join_nonempty(
+                *(REJECT_REASONS.get(r.lower()) for r in reasons), delim=' / ',
+            ):
+                raise ExtractorError(err_msgs, expected=True)
+
+        if not (ws_url := traverse_obj(embedded_data, (
+            'site', 'relive', 'webSocketUrl', {url_or_none},
+        ))):
+            raise ExtractorError('Unexpected error occured')
         ws = self._request_webpage(
-            Request(ws_url, headers={'Origin': f'https://{hostname}'}),
-            video_id=video_id, note='Connecting to WebSocket server')
+            update_url_query(ws_url, {'frontend_id': frontend_id}), video_id,
+            'Connecting to WebSocket server', headers={'Origin': webpage_url})
 
-        self.write_debug('[debug] Sending HLS server request')
+        self.write_debug('Sending HLS server request')
         ws.send(json.dumps({
-            'type': 'startWatching',
             'data': {
+                'reconnect': False,
+                'room': {
+                    'commentable': True,
+                    'protocol': 'webSocket',
+                },
                 'stream': {
-                    'quality': 'abr',
-                    'protocol': 'hls+fmp4',
-                    'latency': latency,
                     'accessRightMethod': 'single_cookie',
                     'chasePlay': False,
+                    'latency': 'high',
+                    'protocol': 'hls+fmp4',
+                    'quality': 'abr',
                 },
-                'room': {
-                    'protocol': 'webSocket',
-                    'commentable': True,
-                },
-                'reconnect': False,
             },
+            'type': 'startWatching',
         }))
 
         while True:
@@ -1005,77 +1207,106 @@ class NiconicoLiveIE(InfoExtractor):
             if not isinstance(data, dict):
                 continue
             if data.get('type') == 'stream':
+                cookies = data['data']['cookies']
                 m3u8_url = data['data']['uri']
                 qualities = data['data']['availableQualities']
-                cookies = data['data']['cookies']
                 break
             elif data.get('type') == 'disconnect':
                 self.write_debug(recv)
-                raise ExtractorError('Disconnected at middle of extraction')
+                raise ExtractorError('Connection lost during extraction')
             elif data.get('type') == 'error':
                 self.write_debug(recv)
-                message = traverse_obj(data, ('body', 'code')) or recv
-                raise ExtractorError(message)
+                raise ExtractorError(
+                    traverse_obj(data, ('body', 'code', {str_or_none})) or recv)
             elif self.get_param('verbose', False):
-                if len(recv) > 100:
-                    recv = recv[:100] + '...'
-                self.write_debug(f'Server said: {recv}')
-
-        title = traverse_obj(embedded_data, ('program', 'title')) or self._html_search_meta(
-            ('og:title', 'twitter:title'), webpage, 'live title', fatal=False)
-
-        raw_thumbs = traverse_obj(embedded_data, ('program', 'thumbnail')) or {}
-        thumbnails = []
-        for name, value in raw_thumbs.items():
-            if not isinstance(value, dict):
-                thumbnails.append({
-                    'id': name,
-                    'url': value,
-                    **parse_resolution(value, lenient=True),
-                })
-                continue
-
-            for k, img_url in value.items():
-                res = parse_resolution(k, lenient=True) or parse_resolution(img_url, lenient=True)
-                width, height = res.get('width'), res.get('height')
-
-                thumbnails.append({
-                    'id': f'{name}_{width}x{height}',
-                    'url': img_url,
-                    'ext': traverse_obj(parse_qs(img_url), ('image', 0, {determine_ext(default_ext='jpg')})),
-                    **res,
-                })
+                self.write_debug(f'Server response: {truncate_string(recv, 100)}')
 
         for cookie in cookies:
             self._set_cookie(
                 cookie['domain'], cookie['name'], cookie['value'],
-                expire_time=unified_timestamp(cookie['expires']), path=cookie['path'], secure=cookie['secure'])
+                expire_time=unified_timestamp(cookie.get('expires')), path=cookie['path'], secure=cookie['secure'])
 
-        formats = self._extract_m3u8_formats(m3u8_url, video_id, ext='mp4', live=True)
-        for fmt, q in zip(formats, reversed(qualities[1:])):
+        live_status = {
+            'BEFORE_RELEASE': 'is_upcoming',
+            'ENDED': 'was_live',
+            'ON_AIR': 'is_live',
+            'RELEASED': 'is_upcoming',
+        }.get(traverse_obj(embedded_data, ('program', 'status', {str})))
+        is_live = live_status == 'is_live'
+
+        formats = self._extract_m3u8_formats(m3u8_url, video_id, ext='mp4', live=is_live)
+        qualities = [
+            *('audio_high', 'audio_low'),
+            *(q for q in qualities[1:] if not q.startswith('audio')),
+        ]
+        for fmt, q in zip(formats, qualities):
+            data = self._download_webpage(fmt['url'], video_id, 'Filtering blank segments')
             fmt.update({
                 'format_id': q,
-                'protocol': 'niconico_live',
-                'ws': ws,
-                'video_id': video_id,
-                'live_latency': latency,
-                'origin': hostname,
+                'hls_media_playlist_data': re.sub(
+                    r'#EXT-X-MAP:URI.*?(?=#EXT-X-MAP:URI)', '', data, flags=re.DOTALL),
+                'protocol': 'niconico_live' if is_live else 'm3u8_native',
             })
+            if is_live:
+                fmt.update({
+                    'live_latency': 'high',
+                    'origin': webpage_url,
+                    'video_id': video_id,
+                    'ws': ws,
+                })
+
+        thumbnails = []
+        raw_thumbs = traverse_obj(embedded_data, ('program', 'thumbnail', {dict}), default={})
+        if icons := traverse_obj(embedded_data, (
+            'program', lambda _, v: v['supplierType'] == 'user', 'icons', {dict}, any,
+        ), default={}):
+            raw_thumbs['icons'] = icons
+        for key, value in raw_thumbs.items():
+            if isinstance(value, dict):
+                for name, img_url in value.items():
+                    res = parse_resolution(name, lenient=True) or parse_resolution(img_url, lenient=True)
+                    thumbnails.append({
+                        'id': f'{name}_{res.get('width')}x{res.get('height')}',
+                        'ext': traverse_obj(parse_qs(img_url), ('image', 0, {determine_ext(default_ext='jpg')})),
+                        'url': img_url,
+                        **res,
+                    })
+            else:
+                thumbnails.append({
+                    'id': key,
+                    'url': value,
+                    **parse_resolution(value, lenient=True),
+                })
 
         return {
             'id': video_id,
-            'title': title,
-            **traverse_obj(embedded_data, {
-                'view_count': ('program', 'statistics', 'watchCount'),
-                'comment_count': ('program', 'statistics', 'commentCount'),
-                'uploader': ('program', 'supplier', 'name'),
-                'channel': ('socialGroup', 'name'),
-                'channel_id': ('socialGroup', 'id'),
-                'channel_url': ('socialGroup', 'socialGroupPageUrl'),
-            }),
-            'description': clean_html(traverse_obj(embedded_data, ('program', 'description'))),
-            'timestamp': int_or_none(traverse_obj(embedded_data, ('program', 'openTime'))),
-            'is_live': True,
-            'thumbnails': thumbnails,
+            'age_limit': age_limit,
             'formats': formats,
+            'live_status': live_status,
+            'thumbnails': thumbnails,
+            'webpage_url': webpage_url,
+            **traverse_obj(embedded_data, ('program', {
+                'title': ('title', {str}),
+                'view_count': ('statistics', 'watchCount'),
+                'comment_count': ('statistics', 'commentCount'),
+                'description': ('description', {clean_html}),
+                'release_timestamp': ('beginTime', {int_or_none}),
+                'timestamp': ('openTime', {int_or_none}, any),
+                'uploader': ('supplier', 'name', {str}),
+                'uploader_id': ('supplier', 'programProviderId', {str_or_none}),
+            })),
+            **traverse_obj(embedded_data, ('program', 'tag', 'list', {
+                'categories': (lambda _, v: v.get('type') == 'category', 'text', {str}),
+                'tags': (lambda _, v: not v.get('type'), 'text', {str}),
+            })),
+            **traverse_obj(embedded_data, (lambda _, v: v['type'] == 'channel', {
+                'channel': ('name', {str}),
+                'channel_id': ('id', {str_or_none}),
+                'channel_url': ('socialGroupPageUrl', {url_or_none}),
+            }, any), default={}),
+            **traverse_obj(embedded_data, ('program', lambda _, v: v['supplierType'] == 'user', {
+                'channel': ('name', {str}),
+                'channel_id': ('programProviderId', {str_or_none}),
+                'channel_url': ('pageUrl', {url_or_none}),
+            }, any), default={}),
         }
