@@ -547,10 +547,26 @@ class TwitchVodIE(TwitchBaseIE):
 
         video = self._download_info(vod_id)
         info = self._extract_info_gql(video, vod_id)
-        access_token = self._download_access_token(vod_id, 'video', 'id')
 
-        formats = self._extract_twitch_m3u8_formats(
-            'vod', vod_id, access_token['value'], access_token['signature'])
+        videos = self._download_gql(
+            vod_id, [{
+                'operationName': 'FilterableVideoTower_Videos',
+                'variables': {
+                    'channelOwnerLogin': video['owner']['login'],
+                    'limit': 100,
+                    'videoSort': 'TIME',
+                },
+            }],
+            'Downloading Videos GraphQL')[0]['data']['user']['videos']['edges']
+        m3u8_url = traverse_obj(videos, (
+            ..., lambda _, v: v['id'] == vod_id, 'animatedPreviewURL',
+            {lambda x: re.sub(r'storyboards/[^/?#]+', 'chunked/index-dvr.m3u8', x)}, {url_or_none}, any,
+        ))
+
+        formats = self._extract_m3u8_formats(m3u8_url, vod_id, 'mp4')
+        for fmt in formats:
+            if fmt.get('vcodec') and fmt['vcodec'].startswith('av01'):
+                fmt['downloader_options'] = {'ffmpeg_args_out': ['-f', 'mp4']}
         formats.extend(self._extract_storyboard(vod_id, video.get('storyboard'), info.get('duration')))
 
         self._prefer_source(formats)
