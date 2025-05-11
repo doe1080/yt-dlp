@@ -24,6 +24,7 @@ from ..utils import (
     str_or_none,
     truncate_string,
     unified_timestamp,
+    update_url_query,
     url_basename,
     url_or_none,
     urlencode_postdata,
@@ -803,9 +804,11 @@ class NiconicoLiveIE(NiconicoBaseIE):
             'site', 'relive', 'webSocketUrl', {url_or_none},
         ))):
             raise ExtractorError('Unable to fetch WebSocket URL', expected=True)
+
+        ws_url = update_url_query(ws_url, {'frontend_id': frontend_id})
         ws = self._request_webpage(
             ws_url, video_id, 'Connecting to WebSocket server',
-            headers={'Origin': self._LIVE_BASE}, query={'frontend_id': frontend_id})
+            headers={'Origin': self._LIVE_BASE})
 
         self.write_debug('Sending HLS server request')
         ws.send(json.dumps({
@@ -848,9 +851,6 @@ class NiconicoLiveIE(NiconicoBaseIE):
             elif self.get_param('verbose', False):
                 self.write_debug(f'Server response: {truncate_string(recv, 100)}')
 
-        title = traverse_obj(embedded_data, ('program', 'title')) or self._html_search_meta(
-            ('og:title', 'twitter:title'), webpage, 'live title', fatal=False)
-
         raw_thumbs = traverse_obj(embedded_data, ('program', 'thumbnail')) or {}
         thumbnails = []
         for name, value in raw_thumbs.items():
@@ -891,7 +891,6 @@ class NiconicoLiveIE(NiconicoBaseIE):
             'origin': self._LIVE_BASE,
             'protocol': 'niconico_live',
             'video_id': video_id,
-            'ws': ws,
         }
         q_iter = (q for q in qualities[1:] if not q.startswith('audio_'))  # ignore initial 'abr'
         a_map = {96: 'audio_low', 192: 'audio_high'}
@@ -909,20 +908,37 @@ class NiconicoLiveIE(NiconicoBaseIE):
             fmt.update(fmt_common)
 
         return {
-            'id': video_id,
-            'title': title,
-            'live_status': live_status,
-            **traverse_obj(embedded_data, {
-                'view_count': ('program', 'statistics', 'watchCount'),
-                'comment_count': ('program', 'statistics', 'commentCount'),
-                'uploader': ('program', 'supplier', 'name'),
-                'channel': ('socialGroup', 'name'),
-                'channel_id': ('socialGroup', 'id'),
-                'channel_url': ('socialGroup', 'socialGroupPageUrl'),
-            }),
-            'description': clean_html(traverse_obj(embedded_data, ('program', 'description'))),
-            'timestamp': int_or_none(traverse_obj(embedded_data, ('program', 'openTime'))),
-            'is_live': True,
-            'thumbnails': thumbnails,
+            'display_id': video_id,
             'formats': formats,
+            'live_status': live_status,
+            'thumbnails': thumbnails,
+            'ws': ws,
+            'ws_url': ws_url,
+            **traverse_obj(embedded_data, ('program', {
+                'id': ('nicoliveProgramId', {str_or_none}),
+                'title': ('title', {str}),
+                'view_count': ('statistics', 'watchCount', {int_or_none}),
+                'comment_count': ('statistics', 'commentCount', {int_or_none}),
+                'description': ('description', {clean_html}),
+                'max_quality': ('stream', 'maxQuality', {str}),
+                'release_timestamp': ('beginTime', {int_or_none}),
+                'timestamp': ('openTime', {int_or_none}, any),
+                'uploader': ('supplier', 'name', {str}),
+                'uploader_id': ('supplier', 'programProviderId', {str_or_none}),
+                'webpage_url': ('watchPageUrl', {url_or_none}),
+            })),
+            **traverse_obj(embedded_data, ('program', 'tag', 'list', {
+                'categories': (lambda _, v: v.get('type') == 'category', 'text', {str}),
+                'tags': (lambda _, v: not v.get('type'), 'text', {str}),
+            })),
+            **traverse_obj(embedded_data, (lambda _, v: v['type'] == 'channel', {
+                'channel': ('name', {str}),
+                'channel_id': ('id', {str_or_none}),
+                'channel_url': ('socialGroupPageUrl', {url_or_none}),
+            }, any), default={}),
+            **traverse_obj(embedded_data, ('program', lambda _, v: v['supplierType'] == 'user', {
+                'channel': ('name', {str}),
+                'channel_id': ('programProviderId', {str_or_none}),
+                'channel_url': ('pageUrl', {url_or_none}),
+            }, any), default={}),
         }
