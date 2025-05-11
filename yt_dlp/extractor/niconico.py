@@ -846,7 +846,7 @@ class NiconicoLiveIE(NiconicoBaseIE):
                 raise ExtractorError('Disconnected at middle of extraction')
             elif data.get('type') == 'error':
                 self.write_debug(recv)
-                message = traverse_obj(data, ('body', 'code')) or recv
+                message = traverse_obj(data, ('body', 'code', {str_or_none}), default=recv)
                 raise ExtractorError(message)
             elif self.get_param('verbose', False):
                 self.write_debug(f'Server response: {truncate_string(recv, 100)}')
@@ -886,17 +886,12 @@ class NiconicoLiveIE(NiconicoBaseIE):
         }.get(traverse_obj(embedded_data, ('program', 'status', {str})))
         is_live = live_status == 'is_live'
 
-        fmt_common = {
-            'live_latency': 'high',
-            'origin': self._LIVE_BASE,
-            'protocol': 'niconico_live',
-            'video_id': video_id,
-        }
         q_iter = (q for q in qualities[1:] if not q.startswith('audio_'))  # ignore initial 'abr'
         a_map = {96: 'audio_low', 192: 'audio_high'}
 
         formats = self._extract_m3u8_formats(m3u8_url, video_id, ext='mp4', live=is_live)
         for fmt in formats:
+            fmt['protocol'] = 'niconico_live'
             if fmt.get('acodec') == 'none':
                 fmt['format_id'] = next(q_iter, fmt['format_id'])
             elif fmt.get('vcodec') == 'none':
@@ -905,22 +900,24 @@ class NiconicoLiveIE(NiconicoBaseIE):
                     'abr': abr,
                     'format_id': a_map.get(abr, fmt['format_id']),
                 })
-            fmt.update(fmt_common)
 
         return {
             'display_id': video_id,
+            'downloader_options': {
+                'max_quality': traverse_obj(embedded_data, (
+                    'program', 'stream', 'maxQuality', {str})),
+                'ws': ws,
+                'ws_url': ws_url,
+            },
             'formats': formats,
             'live_status': live_status,
             'thumbnails': thumbnails,
-            'ws': ws,
-            'ws_url': ws_url,
             **traverse_obj(embedded_data, ('program', {
                 'id': ('nicoliveProgramId', {str_or_none}),
                 'title': ('title', {str}),
                 'view_count': ('statistics', 'watchCount', {int_or_none}),
                 'comment_count': ('statistics', 'commentCount', {int_or_none}),
                 'description': ('description', {clean_html}),
-                'max_quality': ('stream', 'maxQuality', {str}),
                 'release_timestamp': ('beginTime', {int_or_none}),
                 'timestamp': ('openTime', {int_or_none}, any),
                 'uploader': ('supplier', 'name', {str}),
