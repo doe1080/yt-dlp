@@ -878,6 +878,14 @@ class NiconicoLiveIE(NiconicoBaseIE):
                 cookie['domain'], cookie['name'], cookie['value'],
                 expire_time=unified_timestamp(cookie.get('expires')), path=cookie['path'], secure=cookie['secure'])
 
+        live_status = {
+            'BEFORE_RELEASE': 'is_upcoming',
+            'ENDED': 'was_live',
+            'ON_AIR': 'is_live',
+            'RELEASED': 'is_upcoming',
+        }.get(traverse_obj(embedded_data, ('program', 'status', {str})))
+        is_live = live_status == 'is_live'
+
         fmt_common = {
             'live_latency': 'high',
             'origin': self._LIVE_BASE,
@@ -888,7 +896,7 @@ class NiconicoLiveIE(NiconicoBaseIE):
         q_iter = (q for q in qualities[1:] if not q.startswith('audio_'))  # ignore initial 'abr'
         a_map = {96: 'audio_low', 192: 'audio_high'}
 
-        formats = self._extract_m3u8_formats(m3u8_url, video_id, ext='mp4', live=True)
+        formats = self._extract_m3u8_formats(m3u8_url, video_id, ext='mp4', live=is_live)
         for fmt in formats:
             if fmt.get('acodec') == 'none':
                 fmt['format_id'] = next(q_iter, fmt['format_id'])
@@ -903,6 +911,7 @@ class NiconicoLiveIE(NiconicoBaseIE):
         return {
             'id': video_id,
             'title': title,
+            'live_status': live_status,
             **traverse_obj(embedded_data, {
                 'view_count': ('program', 'statistics', 'watchCount'),
                 'comment_count': ('program', 'statistics', 'commentCount'),
