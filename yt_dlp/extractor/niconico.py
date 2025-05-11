@@ -755,7 +755,8 @@ class NiconicoUserIE(InfoExtractor):
 class NiconicoLiveIE(NiconicoBaseIE):
     IE_NAME = 'niconico:live'
     IE_DESC = 'ニコニコ生放送'
-    _VALID_URL = r'https?://(?:sp\.)?live2?\.nicovideo\.jp/(?:watch|gate)/(?P<id>lv\d+)'
+
+    _VALID_URL = r'https?://(?:sp\.)?live2?\.nicovideo\.jp/(?:embed|gate|watch(?:/user)?)/(?P<id>(?:ch|lv)?\d+)'
     _TESTS = [{
         'note': 'this test case includes invisible characters for title, pasting them as-is',
         'url': 'https://live.nicovideo.jp/watch/lv339533123',
@@ -851,8 +852,8 @@ class NiconicoLiveIE(NiconicoBaseIE):
             elif self.get_param('verbose', False):
                 self.write_debug(f'Server response: {truncate_string(recv, 100)}')
 
-        raw_thumbs = traverse_obj(embedded_data, ('program', 'thumbnail')) or {}
         thumbnails = []
+        raw_thumbs = traverse_obj(embedded_data, ('program', 'thumbnail', {dict}), default={})
         for name, value in raw_thumbs.items():
             if not isinstance(value, dict):
                 thumbnails.append({
