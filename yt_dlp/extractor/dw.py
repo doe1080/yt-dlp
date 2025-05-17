@@ -1,111 +1,118 @@
-import urllib.parse
-
 from .common import InfoExtractor
 from ..utils import (
     int_or_none,
-    unified_strdate,
+    parse_iso8601,
     url_or_none,
+    variadic,
 )
+from ..utils.traversal import traverse_obj
 
 
 class DWIE(InfoExtractor):
-    _WORKING = False
-    _ENABLED = None  # XXX: pass through to GenericIE
     IE_NAME = 'dw'
-    _VALID_URL = r'https?://(?:www\.)?dw\.com/(?:[^/]+/)+(?:av|e)-(?P<id>\d+)'
+    IE_DESC = 'Deutsche Welle'
+
+    _VALID_URL = r'https?://(?:(?:amp|www)\.)?dw\.com/(?P<lang>[^/]+)/[^/]+/(?P<type>a(?:udio)?|live|program|video)-(?P<id>\d+)'
     _TESTS = [{
-        # video
-        'url': 'http://www.dw.com/en/intelligent-light/av-19112290',
-        'md5': 'fb9dfd9520811d3ece80f04befd73428',
+        'url': 'https://www.dw.com/en/intelligent-light/video-19112290',
         'info_dict': {
             'id': '19112290',
             'ext': 'mp4',
             'title': 'Intelligent light',
+            'categories': ['Science'],
             'description': 'md5:90e00d5881719f2a6a5827cb74985af1',
-            'upload_date': '20160605',
+            'duration': 194,
+            'modified_date': '20160603',
+            'modified_timestamp': 1464917222,
+            'release_date': '20160605',
+            'release_timestamp': 1465162200,
+            'thumbnail': 'https://static.dw.com/image/18342580_605.webp',
         },
     }, {
-        # audio
-        'url': 'http://www.dw.com/en/worldlink-my-business/av-19111941',
-        'md5': '2814c9a1321c3a51f8a7aeb067a360dd',
+        'url': 'https://www.dw.com/en/30-years-since-the-fall-of-the-berlin-wall-what-happened-to-the-euphoria/audio-51155232',
         'info_dict': {
-            'id': '19111941',
+            'id': '51155232',
             'ext': 'mp3',
-            'title': 'WorldLink: My business',
-            'description': 'md5:bc9ca6e4e063361e21c920c53af12405',
-            'upload_date': '20160311',
+            'title': '30 years since the fall of the Berlin Wall: What happened to the euphoria?',
+            'categories': ['Politics'],
+            'description': 'md5:ed0686725ef2d8fa5230aa8171b6476b',
+            'duration': 1561,
+            'release_date': '20191107',
+            'release_timestamp': 1573140547,
+            'thumbnail': 'https://static.dw.com/image/51151661_605.webp',
         },
     }, {
-        # DW documentaries, only last for one or two weeks
-        'url': 'http://www.dw.com/en/documentaries-welcome-to-the-90s-2016-05-21/e-19220158-9798',
-        'md5': '56b6214ef463bfb9a3b71aeb886f3cf1',
+        'url': 'https://www.dw.com/en/10-years-since-higgs-boson-whats-next/a-62353123',
         'info_dict': {
-            'id': '19274438',
-            'ext': 'mp4',
-            'title': 'Welcome to the 90s – Hip Hop',
-            'description': 'Welcome to the 90s - The Golden Decade of Hip Hop',
-            'upload_date': '20160521',
+            'id': '62353123',
+            'title': '10 years since Higgs boson. What\'s next?',
         },
-        'skip': 'Video removed',
+        'playlist_count': 1,
+    }, {
+        'url': 'https://www.dw.com/en/0/live-72516011',
+        'info_dict': {
+            'id': '72516011',
+            'title': 'Germany updates: Afghan family sues government — report',
+        },
+        'playlist_count': 5,
+    }, {
+        'url': 'https://www.dw.com/en/choices/program-68776240',
+        'info_dict': {
+            'id': '68776240',
+            'title': 'CHOICES',
+        },
+        'playlist_count': 13,
     }]
 
+    def _entries(self, graph_api, media_type):
+        path = {
+            'a': 'videos',
+            'live': ('posts', ..., 'videos'),
+            'program': 'moreContentsFromUnifiedProgram',
+        }[media_type]
+        for dct in traverse_obj(graph_api, (
+            *variadic(path), lambda _, v: v['namedUrl'],
+        )):
+            yield self.url_result(
+                f'https://www.dw.com{dct['namedUrl']}', DWIE)
+
     def _real_extract(self, url):
-        media_id = self._match_id(url)
+        lang, media_type, media_id = self._match_valid_url(url).groups()
         webpage = self._download_webpage(url, media_id)
-        hidden_inputs = self._hidden_inputs(webpage)
-        title = hidden_inputs['media_title']
-        media_id = hidden_inputs.get('media_id') or media_id
 
-        direct_url = url_or_none(hidden_inputs.get('file_name'))
-        if direct_url:
-            formats = [{'url': hidden_inputs['file_name']}]
+        path = {
+            'a': 'article',
+            'audio': 'audio',
+            'live': 'liveblog',
+            'program': 'unified-program',
+            'video': 'video',
+        }[media_type]
+        graph_api = traverse_obj(self._search_json(
+            r'window\.__APP_STATE__\s*=\s*', webpage, 'app state', media_id,
+        ), (f'/graph-api/{lang}/content/{path}/{media_id}', 'data', 'content', {dict}))
+
+        if media_type in {'a', 'live', 'program'}:
+            return self.playlist_result(
+                self._entries(graph_api, media_type), media_id, graph_api.get('title'))
+        elif media_type == 'audio':
+            formats = [{
+                'ext': 'mp3',
+                'url': traverse_obj(graph_api, ('mp3Src', {url_or_none})),
+            }]
         else:
-            formats = self._extract_smil_formats(
-                f'http://www.dw.com/smil/v-{media_id}', media_id,
-                transform_source=lambda s: s.replace(
-                    'rtmp://tv-od.dw.de/flash/',
-                    'http://tv-download.dw.de/dwtv_video/flv/'))
-
-        upload_date = hidden_inputs.get('display_date')
-        if not upload_date:
-            upload_date = self._html_search_regex(
-                r'<span[^>]+class="date">([0-9.]+)\s*\|', webpage,
-                'upload date', default=None)
-            upload_date = unified_strdate(upload_date)
+            m3u8_url = traverse_obj(graph_api, ('hlsVideoSrc', {url_or_none}))
+            formats = self._extract_m3u8_formats(m3u8_url, media_id, 'mp4', m3u8_id='hls')
 
         return {
             'id': media_id,
-            'title': title,
-            'description': self._og_search_description(webpage),
-            'thumbnail': hidden_inputs.get('preview_image'),
-            'duration': int_or_none(hidden_inputs.get('file_duration')),
-            'upload_date': upload_date,
             'formats': formats,
+            **traverse_obj(graph_api, {
+                'title': ('title', {str}),
+                'categories': ('thematicFocusCategory', 'name', {str}, all, filter),
+                'description': ('teaser', {str}),
+                'duration': ('duration', {int_or_none}),
+                'modified_timestamp': ('lastModifiedDate', {parse_iso8601}),
+                'thumbnail': ('posterImageUrl', {url_or_none}),
+                'release_timestamp': ('contentDate', {parse_iso8601}),
+            }),
         }
-
-
-class DWArticleIE(InfoExtractor):
-    _WORKING = False
-    _ENABLED = None  # XXX: pass through to GenericIE
-    IE_NAME = 'dw:article'
-    _VALID_URL = r'https?://(?:www\.)?dw\.com/(?:[^/]+/)+a-(?P<id>\d+)'
-    _TEST = {
-        'url': 'http://www.dw.com/en/no-hope-limited-options-for-refugees-in-idomeni/a-19111009',
-        'md5': '8ca657f9d068bbef74d6fc38b97fc869',
-        'info_dict': {
-            'id': '19105868',
-            'ext': 'mp4',
-            'title': 'The harsh life of refugees in Idomeni',
-            'description': 'md5:196015cc7e48ebf474db9399420043c7',
-            'upload_date': '20160310',
-        },
-    }
-
-    def _real_extract(self, url):
-        article_id = self._match_id(url)
-        webpage = self._download_webpage(url, article_id)
-        hidden_inputs = self._hidden_inputs(webpage)
-        media_id = hidden_inputs['media_id']
-        media_path = self._search_regex(rf'href="([^"]+av-{media_id})"\s+class="overlayLink"', webpage, 'media url')
-        media_url = urllib.parse.urljoin(url, media_path)
-        return self.url_result(media_url, 'DW', media_id)
