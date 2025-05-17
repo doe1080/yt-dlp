@@ -74,7 +74,7 @@ class DWIE(InfoExtractor):
             *variadic(path), lambda _, v: v['namedUrl'],
         )):
             yield self.url_result(
-                f'https://www.dw.com{dct['namedUrl']}', DWIE)
+                f'https://www.dw.com{dct["namedUrl"]}', DWIE)
 
     def _real_extract(self, url):
         lang, media_type, media_id = self._match_valid_url(url).groups()
