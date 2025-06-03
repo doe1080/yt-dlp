@@ -1,6 +1,5 @@
 from .common import InfoExtractor
 from ..utils import (
-    ExtractorError,
     int_or_none,
     parse_qs,
     str_or_none,
@@ -35,7 +34,7 @@ class AnimeFestaIE(AnimeFestaBaseIE):
     IE_NAME = 'animefesta'
     IE_DESC = 'アニメフェスタ'
 
-    _VALID_URL = r'https?://animefesta\.iowl\.jp/(?!titles/\d+)[^?]*'
+    _VALID_URL = r'https?://animefesta\.iowl\.jp/(?!titles/)[^?]*\?(?=[^#]*\bplay_episode_id=\d+)(?=[^#]*\btid=\d+)[^#]+'
     _TESTS = [{
         'url': 'https://animefesta.iowl.jp/?play_episode_id=6942&tid=1302',
         'info_dict': {
@@ -80,11 +79,6 @@ class AnimeFestaIE(AnimeFestaBaseIE):
     def _real_extract(self, url):
         query = {k: v[0] for k, v in parse_qs(url).items() if v}
         episode_id, title_id = map(query.get, ('play_episode_id', 'tid'))
-        if not title_id:
-            raise ExtractorError('Invalid URL', expected=True)
-        if not episode_id:
-            return self.url_result(
-                update_url_query(self._BASE_URL, {'tid': title_id}), AnimeFestaTitleIE)
         contents = self._call_api('titles', title_id)
 
         formats = []
@@ -132,7 +126,7 @@ class AnimeFestaIE(AnimeFestaBaseIE):
 class AnimeFestaTitleIE(AnimeFestaBaseIE):
     IE_NAME = 'animefesta:title'
 
-    _VALID_URL = r'https?://animefesta\.iowl\.jp/(?:titles/|[^?]*\?tid=)(?P<id>\d+)'
+    _VALID_URL = r'https?://animefesta\.iowl\.jp/(?:titles/|[^?]*\?(?![^#]*\bplay_episode_id=)[^#]*\btid=)(?P<id>\d+)'
     _TESTS = [{
         'url': 'https://animefesta.iowl.jp/titles/1499',
         'info_dict': {
