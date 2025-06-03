@@ -127,6 +127,10 @@ from .americastestkitchen import (
 )
 from .anchorfm import AnchorFMEpisodeIE
 from .angel import AngelIE
+from .animefesta import (
+    AnimeFestaIE,
+    AnimeFestaTitleIE,
+)
 from .antenna import (
     Ant1NewsGrArticleIE,
     Ant1NewsGrEmbedIE,
