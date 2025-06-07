@@ -1,51 +1,61 @@
 from .common import InfoExtractor
-from ..utils import (
-    int_or_none,
-    parse_iso8601,
+from ..utils import clean_html, int_or_none
+from ..utils.traversal import (
+    find_element,
+    traverse_obj,
+    trim_str,
 )
 
 
 class VideofyMeIE(InfoExtractor):
-    _WORKING = False
-    _VALID_URL = r'https?://(?:www\.videofy\.me/.+?|p\.videofy\.me/v)/(?P<id>\d+)(&|#|$)'
     IE_NAME = 'videofy.me'
+    IE_DESC = 'Videofy.me'
 
-    _TEST = {
-        'url': 'http://www.videofy.me/thisisvideofyme/1100701',
-        'md5': 'c77d700bdc16ae2e9f3c26019bd96143',
+    _VALID_URL = r'https?://(?:(?:p|www)\.)?videofy\.me/v/(?P<id>\d+)'
+    _TESTS = [{
+        'url': 'https://www.videofy.me/v/882107',
         'info_dict': {
-            'id': '1100701',
+            'id': '882107',
             'ext': 'mp4',
             'title': 'This is VideofyMe',
+            'comment_count': int,
             'description': '',
+            'thumbnail': r're:https?://videothumb\.videofy\.me/.+\.jpg',
+            'timestamp': 1364281642,
             'upload_date': '20130326',
-            'timestamp': 1364288959,
-            'uploader': 'VideofyMe',
             'uploader_id': 'thisisvideofyme',
             'view_count': int,
-            'like_count': int,
-            'comment_count': int,
         },
-    }
+    }, {
+        'url': 'https://p.videofy.me/v/315598',
+        'info_dict': {
+            'id': '315598',
+            'ext': 'mp4',
+            'title': 'så bra den vart',
+            'comment_count': int,
+            'description': 'md5:14f0e1345e078347ddbaa5bca4608ad8',
+            'thumbnail': r're:https?://videothumb\.videofy\.me/.+\.jpg',
+            'timestamp': 1326781151,
+            'upload_date': '20120117',
+            'uploader_id': 'g4pvuwf4',
+            'view_count': int,
+        },
+    }]
 
     def _real_extract(self, url):
         video_id = self._match_id(url)
-
-        config = self._download_json(f'http://vf-player-info-loader.herokuapp.com/{video_id}.json', video_id)['videoinfo']
-
-        video = config.get('video')
-        blog = config.get('blog', {})
+        webpage = self._download_webpage(url, video_id)
 
         return {
             'id': video_id,
-            'title': video['title'],
-            'url': video['sources']['source']['url'],
-            'thumbnail': video.get('thumb'),
-            'description': video.get('description'),
-            'timestamp': parse_iso8601(video.get('date')),
-            'uploader': blog.get('name'),
-            'uploader_id': blog.get('identifier'),
-            'view_count': int_or_none(self._search_regex(r'([0-9]+)', video.get('views'), 'view count', fatal=False)),
-            'like_count': int_or_none(video.get('likes')),
-            'comment_count': int_or_none(video.get('nrOfComments')),
+            'comment_count': int_or_none(self._search_regex(
+                r'(\d+)\s+Comments', webpage, 'comment count', default=0)),
+            **self._search_json_ld(webpage, video_id),
+            **traverse_obj(webpage, {
+                'like_count': ({find_element(cls='sl-count')}, {int_or_none}),
+                'uploader_id': (
+                    {find_element(cls='betube_mag__heading_head betube_mag__heading_author')},
+                    {clean_html}, {trim_str(start='By :')}, {str.strip},
+                ),
+            }),
         }
