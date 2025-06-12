@@ -27,7 +27,8 @@ class LiveJournalIE(InfoExtractor):
             'thumbnail': r're:https?://static\.eaglecdn\.com/.+\.jpg',
             'timestamp': 1561406715,
             'upload_date': '20190624',
-            'uploader_id': 'andrei_bt',
+            'uploader': 'andrei_bt',
+            'uploader_id': '18425682',
         },
     }, {
         'url': 'https://dexter8262.livejournal.com/video/album/394/?mode=view&id=7538',
@@ -40,17 +41,8 @@ class LiveJournalIE(InfoExtractor):
             'thumbnail': r're:https?://static\.eaglecdn\.com/.+\.jpg',
             'timestamp': 1749482104,
             'upload_date': '20250609',
-            'uploader_id': 'dexter8262',
-        },
-    }, {
-        'url': 'https://dexter8262.livejournal.com/3026.html',
-        'md5': 'adaf018388572ced8a6f301ace49d4b2',
-        'info_dict': {
-            'id': '1263729',
-            'ext': 'mp4',
-            'title': 'Истребители против БПЛА',
-            'upload_date': '20190624',
-            'timestamp': 1561406715,
+            'uploader': 'dexter8262',
+            'uploader_id': '96101788',
         },
     }]
 
@@ -96,6 +88,7 @@ class LiveJournalIE(InfoExtractor):
             'duration': traverse_obj(playlist, (
                 'duration', {float_or_none(scale='1000')})),
             'formats': formats,
+            'uploader_id': self._hidden_inputs(webpage)['journalId'],
             **traverse_obj(record, {
                 'title': ('name', {clean_html}),
                 'age_limit': ('adult_content', {bool}, {lambda x: 18 if x else None}),
@@ -103,7 +96,7 @@ class LiveJournalIE(InfoExtractor):
                 'playlist_id': ('albumid', {str_or_none}),
                 'thumbnail': ('screenshot', {url_or_none}),
                 'timestamp': ('timecreate', {int_or_none}),
-                'uploader_id': ('owner', {str}),
+                'uploader': ('owner', {str}),
             }),
         }
 
@@ -111,7 +104,7 @@ class LiveJournalIE(InfoExtractor):
 class LiveJournalAlbumIE(InfoExtractor):
     IE_NAME = 'livejournal:album'
 
-    _VALID_URL = r'https?://(?:[^./]+\.)?livejournal\.com/video/album/(?P<id>\d+)(?:[/?#]|$)'
+    _VALID_URL = r'https?://(?:[^./]+\.)?livejournal\.com/video/album/(?P<id>\d+)(?!.*[?&]id=)(?:[/?#]|$)'
     _TESTS = [{
         'url': 'https://dexter8262.livejournal.com/video/album/394/',
         'info_dict': {
