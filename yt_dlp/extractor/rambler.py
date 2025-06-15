@@ -49,7 +49,7 @@ class RamblerBaseIE(InfoExtractor):
             **traverse_obj(playlist, {
                 'id': ('uuid', {str}),
                 'title': ('title', {clean_html}),
-                'duration': ('duration', {float_or_none(scale='1000')}),
+                'duration': ('duration', {float_or_none(scale=1000)}),
                 'release_timestamp': ('startsAt', {parse_iso8601}),
                 'thumbnail': (('customScreenshotOrig', 'snapshot'), {url_or_none}, any),
                 'webpage_url': ('defaultShareUrl', {url_or_none}),
@@ -72,6 +72,7 @@ class RamblerIE(RamblerBaseIE):
             'ext': 'mp4',
             'title': 'Автомобиль с дипномерами врезался в пушку',
             'display_id': '54816856-v-moskve-mashina-s-diplomaticheskimi-nomerami-vrezalas-v-pushku',
+            'duration': 26.0,
             'thumbnail': r're:https?://.+\.(?:jpe?g|png)',
         },
     }, {
@@ -80,6 +81,7 @@ class RamblerIE(RamblerBaseIE):
             'id': 'record::13ff0e0c-8f62-41bb-80eb-2a4664854596',
             'ext': 'mp4',
             'title': 'Гречневая лапша с индейкой и арахисом в азиатском стиле',
+            'duration': 293.0,
             'thumbnail': r're:https?://.+\.(?:jpe?g|png)',
         },
     }, {
@@ -88,6 +90,7 @@ class RamblerIE(RamblerBaseIE):
             'id': 'record::6f10ddd6-1222-4ee4-828b-9eba92e7c26f',
             'ext': 'mp4',
             'title': 'Baby Melo.mp4',
+            'duration': 65.0,
             'thumbnail': r're:https?://.+\.(?:jpe?g|png)',
         },
     }, {
