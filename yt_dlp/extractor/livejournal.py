@@ -1,10 +1,9 @@
 import json
 
 from .common import InfoExtractor
+from .rambler import RamblerBaseIE
 from ..utils import (
-    ExtractorError,
     clean_html,
-    float_or_none,
     int_or_none,
     str_or_none,
     url_or_none,
@@ -12,17 +11,18 @@ from ..utils import (
 from ..utils.traversal import require, traverse_obj
 
 
-class LiveJournalIE(InfoExtractor):
+class LiveJournalIE(RamblerBaseIE):
     IE_NAME = 'livejournal'
 
     _VALID_URL = r'https?://(?:[^./]+\.)?livejournal\.com/video/album/\d+\S*[?&]id=(?P<id>\d+)\b'
     _TESTS = [{
         'url': 'https://andrei-bt.livejournal.com/video/album/407/?mode=view&id=51272',
         'info_dict': {
-            'id': '1263729',
+            'id': 'record::cd3a90df-5a7d-41f5-843d-e85df46a9749',
             'ext': 'mp4',
             'title': 'Истребители против БПЛА.mp4',
             'display_id': '51272',
+            'duration': 69.34,
             'playlist_id': '407',
             'thumbnail': r're:https?://static\.eaglecdn\.com/.+\.jpg',
             'timestamp': 1561406715,
@@ -33,10 +33,11 @@ class LiveJournalIE(InfoExtractor):
     }, {
         'url': 'https://dexter8262.livejournal.com/video/album/394/?mode=view&id=7538',
         'info_dict': {
-            'id': '2617150',
+            'id': 'record::ed386b24-dc20-4f78-94c4-4e21473d09f9',
             'ext': 'mp4',
             'title': 'центрополис.MOV',
             'display_id': '7538',
+            'duration': 17.0,
             'playlist_id': '394',
             'thumbnail': r're:https?://static\.eaglecdn\.com/.+\.jpg',
             'timestamp': 1749482104,
@@ -52,42 +53,12 @@ class LiveJournalIE(InfoExtractor):
 
         record = self._search_json(
             r'Site\.page\s*=', webpage, 'page data', display_id)['video']['record']
-        rambler_id, template_id = traverse_obj(record, {
-            'rambler_id': ('storageid', {str_or_none}, {require('rambler player ID')}),
-            'template_id': ('player_template_id', {str_or_none}, {require('player template ID')}),
-        }).values()
-
-        player_data = self._download_json(
-            'https://api.vp.rambler.ru/api/v3/records/getPlayerData',
-            display_id, headers={
-                'Origin': 'https://andrei-bt.livejournal.com',
-                'Referer': 'https://andrei-bt.livejournal.com/',
-            }, query={
-                'params': json.dumps({
-                    'checkReferrerCount': True,
-                    'id': rambler_id,
-                    'playerTemplateId': template_id,
-                    'referrer': url,
-                }).encode(),
-            })
-        if not player_data.get('success'):
-            raise ExtractorError(player_data['error']['type'], expected=True)
-        playlist = player_data['result']['playList']
-
-        formats = []
-        for m3u8_url in traverse_obj(playlist, (
-            ('directSource', 'source'), {url_or_none}, filter,
-        )):
-            formats.extend(self._extract_m3u8_formats(
-                m3u8_url, rambler_id, 'mp4', fatal=False))
-        self._remove_duplicate_formats(formats)
+        rambler_id = traverse_obj(record, (
+            'storageid', {str_or_none}, {require('rambler ID')}))
 
         return {
-            'id': rambler_id,
+            **self._extract_from_rambler_api(rambler_id, url),
             'display_id': display_id,
-            'duration': traverse_obj(playlist, (
-                'duration', {float_or_none(scale='1000')})),
-            'formats': formats,
             'uploader_id': self._hidden_inputs(webpage)['journalId'],
             **traverse_obj(record, {
                 'title': ('name', {clean_html}),
@@ -133,8 +104,8 @@ class LiveJournalAlbumIE(InfoExtractor):
             'method': method,
             'id': index,
             'params': {
-                'user': user,
                 'auth_token': auth_token,
+                'user': user,
                 **({'albumid': int(album_id)} if method == 'video.get_records' else {}),
             },
         } for index, method in enumerate(('video.get_records', 'video.get_albums'), 1)]
