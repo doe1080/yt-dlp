@@ -1,132 +1,157 @@
-from .common import InfoExtractor
 from .streaks import StreaksBaseIE
 from ..utils import (
     clean_html,
     int_or_none,
-    str_or_none,
-    unified_timestamp,
+    parse_iso8601,
+    url_or_none,
 )
-from ..utils.traversal import find_element, traverse_obj
+from ..utils.traversal import traverse_obj
 
 
-class TBSJPEpisodeIE(StreaksBaseIE):
+class TBSJPBaseIE(StreaksBaseIE):
+    _CU_BASE = 'https://cu.tbs.co.jp'
+
+    def _window_app(self, webpage, name, item_id, fatal=True):
+        return self._search_json(
+            r'window\.app\s*=', webpage, f'{name} info', item_id, fatal=fatal)
+
+
+class TBSJPEpisodeIE(TBSJPBaseIE):
+    IE_DESC = 'TBS FREE'
+
     _VALID_URL = r'https?://cu\.tbs\.co\.jp/episode/(?P<id>[\d_]+)'
     _GEO_BYPASS = False
     _TESTS = [{
         'url': 'https://cu.tbs.co.jp/episode/14694_2090934_1000117476',
-        'skip': 'geo-blocked to japan + 7-day expiry',
         'info_dict': {
-            'title': '次世代リアクション王発掘トーナメント',
             'id': '14694_2090934_1000117476',
             'ext': 'mp4',
+            'title': '次世代リアクション王発掘トーナメント',
+            'cast': 'count:7',
+            'categories': 'count:8',
+            'description': 'md5:0f57448221519627dce7802432729159',
             'display_id': 'ref:14694_2090934_1000117476',
-            'description': 'md5:63a2f445387f9d8c50f4e76396df968f',
-            'uploader_id': 'tbs',
             'duration': 2761,
-            'thumbnail': 'md5:5e044cd3431b1301de1a25911a6a9a4e',
-            'categories': ['エンタメ', '水曜日のダウンタウン', 'ダウンタウン', '浜田雅功', '松本人志', '水ダウ', 'バラエティ', '動画'],
-            'series': '水曜日のダウンタウン',
             'episode': '次世代リアクション王発掘トーナメント',
+            'episode_id': '14694_2090934_1000117476',
             'episode_number': 335,
+            'genres': 'count:1',
+            'live_status': 'not_live',
+            'modified_date': '20250611',
+            'modified_timestamp': 1749647146,
+            'release_date': '20250611',
+            'release_timestamp': 1749646802,
+            'series': '水曜日のダウンタウン',
+            'series_id': '14694',
+            'thumbnail': r're:https?://asset\.catalog\.play\.jp/tbs/tbs_free/.+\.jpg',
             'timestamp': 1749547434,
             'upload_date': '20250610',
-            'release_timestamp': 1749646802,
-            'release_date': '20250611',
-            'modified_timestamp': 1749647146,
-            'modified_date': '20250611',
-            'live_status': 'not_live',
+            'uploader': 'TBS',
+            'uploader_id': 'tbs',
         },
+        'skip': 'Geo-restricted to Japan; available for 7 days',
     }]
 
     def _real_extract(self, url):
         video_id = self._match_id(url)
         webpage = self._download_webpage(url, video_id)
-        meta = self._search_json(r'window\.app\s*=', webpage, 'episode info', video_id, fatal=False)
+        meta = self._window_app(webpage, 'episode', video_id, fatal=False)
         episode = traverse_obj(meta, ('falcorCache', 'catalog', 'episode', video_id, 'value'))
 
         return {
-            **self._extract_from_streaks_api('tbs', f'ref:{video_id}', headers={'Referer': 'https://cu.tbs.co.jp/'}),
-            'title': traverse_obj(webpage, ({find_element(tag='h3')}, {clean_html})),
-            'id': video_id,
+            **self._extract_from_streaks_api(
+                'tbs', f'ref:{video_id}', headers={'Referer': f'{self._CU_BASE}/'}),
             **traverse_obj(episode, {
-                'categories': ('keywords', {list}),
-                'id': ('content_id', {str}),
-                'description': ('description', 0, 'value'),
-                'timestamp': ('created_at', {unified_timestamp}),
-                'release_timestamp': ('pub_date', {unified_timestamp}),
+                'title': ('title', ..., 'value', {str}, any),
+                'cast': ('credit', ..., 'name', ..., 'value', {str}, any, {lambda x: x.split(',')}, filter),
+                'categories': ('keywords', ..., {str}, filter, all, filter),
+                'description': ('description', ..., 'value', {clean_html}, any),
                 'duration': ('tv_episode_info', 'duration', {int_or_none}),
+                'episode': ('title', lambda _, v: not v.get('is_phonetic'), 'value', {str}, any),
+                'episode_id': ('content_id', {str}),
                 'episode_number': ('tv_episode_info', 'episode_number', {int_or_none}),
-                'episode': ('title', lambda _, v: not v.get('is_phonetic'), 'value'),
-                'series': ('custom_data', 'program_name'),
-            }, get_all=False),
+                'genres': ('genre', ..., {str}, filter, all, filter),
+                'release_timestamp': ('pub_date', {parse_iso8601}),
+                'series': ('custom_data', 'program_name', {str}),
+                'tags': ('tags', ..., {str}, filter, all, filter),
+                'thumbnail': ('artwork', ..., 'url', {url_or_none}, any),
+                'timestamp': ('created_at', {parse_iso8601}),
+                'uploader': ('tv_show_info', 'networks', ..., {str}, any),
+            }),
+            **traverse_obj(episode, ('tv_episode_info', {
+                'duration': ('duration', {int_or_none}),
+                'episode_number': ('episode_number', {int_or_none}),
+                'series_id': ('show_content_id', {str}),
+            })),
+            'id': video_id,
         }
 
 
-class TBSJPProgramIE(InfoExtractor):
+class TBSJPProgramIE(TBSJPBaseIE):
     _VALID_URL = r'https?://cu\.tbs\.co\.jp/program/(?P<id>\d+)'
     _TESTS = [{
         'url': 'https://cu.tbs.co.jp/program/14694',
-        'playlist_mincount': 1,
         'info_dict': {
             'id': '14694',
             'title': '水曜日のダウンタウン',
             'description': 'md5:cf1d46c76c2755d7f87512498718b837',
-            'categories': ['エンタメ', '水曜日のダウンタウン', 'ダウンタウン', '浜田雅功', '松本人志', '水ダウ', 'バラエティ', '動画'],
-            'series': '水曜日のダウンタウン',
         },
+        'playlist_mincount': 1,
     }]
 
     def _real_extract(self, url):
-        programme_id = self._match_id(url)
-        webpage = self._download_webpage(url, programme_id)
-        meta = self._search_json(r'window\.app\s*=', webpage, 'programme info', programme_id)
+        program_id = self._match_id(url)
+        webpage = self._download_webpage(url, program_id)
+        program = self._window_app(
+            webpage, 'program', program_id,
+        )['falcorCache']['catalog']['program'][program_id]['false']['value']
 
-        programme = traverse_obj(meta, ('falcorCache', 'catalog', 'program', programme_id, 'false', 'value'))
+        entries = [self.url_result(
+            f'{self._CU_BASE}/episode/{ep_id}', TBSJPEpisodeIE,
+        ) for ep_id in traverse_obj(program, (
+            'custom_data', 'seriesList', 'episodeCode', ..., {str}, filter, all, filter))]
 
-        return {
-            '_type': 'playlist',
-            'entries': [self.url_result(f'https://cu.tbs.co.jp/episode/{video_id}', TBSJPEpisodeIE, video_id)
-                        for video_id in traverse_obj(programme, ('custom_data', 'seriesList', 'episodeCode', ...))],
-            'id': programme_id,
-            **traverse_obj(programme, {
-                'categories': ('keywords', ...),
-                'id': ('tv_episode_info', 'show_content_id', {str_or_none}),
-                'description': ('custom_data', 'program_description'),
-                'series': ('custom_data', 'program_name'),
-                'title': ('custom_data', 'program_name'),
-            }),
-        }
+        return self.playlist_result(
+            entries, program_id, **traverse_obj(program, ('custom_data', {
+                'title': ('program_name', {clean_html}),
+                'description': ('program_description', {clean_html}),
+            })),
+        )
 
 
-class TBSJPPlaylistIE(InfoExtractor):
+class TBSJPPlaylistIE(TBSJPBaseIE):
     _VALID_URL = r'https?://cu\.tbs\.co\.jp/playlist/(?P<id>[\da-f]+)'
     _TESTS = [{
         'url': 'https://cu.tbs.co.jp/playlist/184f9970e7ba48e4915f1b252c55015e',
-        'playlist_mincount': 4,
         'info_dict': {
-            'title': 'まもなく配信終了',
             'id': '184f9970e7ba48e4915f1b252c55015e',
+            'title': 'まもなく配信終了',
         },
+        'playlist_mincount': 2,
     }]
+
+    def _entries(self, playlist):
+        for entry in traverse_obj(playlist, (
+            'catalogs', 'value', lambda _, v: v['content_id'],
+        )):
+            content_id = entry['content_id']
+            content_type = entry.get('content_type')
+
+            if content_type == 'tv_show':
+                yield self.url_result(
+                    f'{self._CU_BASE}/program/{content_id}', TBSJPProgramIE)
+            elif content_type == 'tv_episode':
+                yield self.url_result(
+                    f'{self._CU_BASE}/episode/{content_id}', TBSJPEpisodeIE)
+            else:
+                self.report_warning(
+                    f'Skipping "{content_id}" with unsupported content_type "{content_type}"')
 
     def _real_extract(self, url):
         playlist_id = self._match_id(url)
-        page = self._download_webpage(url, playlist_id)
-        meta = self._search_json(r'window\.app\s*=', page, 'playlist info', playlist_id)
-        playlist = traverse_obj(meta, ('falcorCache', 'playList', playlist_id))
+        webpage = self._download_webpage(url, playlist_id)
+        playlist = self._window_app(
+            webpage, 'playlist', playlist_id)['falcorCache']['playList'][playlist_id]
 
-        def entries():
-            for entry in traverse_obj(playlist, ('catalogs', 'value', lambda _, v: v['content_id'])):
-                # TODO: it's likely possible to get all metadata from the playlist page json instead
-                content_id = entry['content_id']
-                content_type = entry.get('content_type')
-                if content_type == 'tv_show':
-                    yield self.url_result(
-                        f'https://cu.tbs.co.jp/program/{content_id}', TBSJPProgramIE, content_id)
-                elif content_type == 'tv_episode':
-                    yield self.url_result(
-                        f'https://cu.tbs.co.jp/episode/{content_id}', TBSJPEpisodeIE, content_id)
-                else:
-                    self.report_warning(f'Skipping "{content_id}" with unsupported content_type "{content_type}"')
-
-        return self.playlist_result(entries(), playlist_id, traverse_obj(playlist, ('display_name', 'value')))
+        return self.playlist_result(
+            self._entries(playlist), playlist_id, traverse_obj(playlist, ('display_name', 'value', {str})))
