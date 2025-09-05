@@ -369,7 +369,10 @@ from .cda import (
     CDAFolderIE,
 )
 from .cellebrite import CellebriteIE
-from .ceskatelevize import CeskaTelevizeIE
+from .ceskatelevize import (
+    CeskaTelevizeIE,
+    CeskaTelevizeSeriesIE,
+)
 from .cgtn import CGTNIE
 from .charlierose import CharlieRoseIE
 from .chaturbate import ChaturbateIE
