@@ -2591,6 +2591,11 @@ from .zee5 import (
 )
 from .zeenews import ZeeNewsIE
 from .zenporn import ZenPornIE
+from .zenstudy import (
+    ZenStudyChaptersIE,
+    ZenStudyCoursesIE,
+    ZenStudyIE,
+)
 from .zetland import ZetlandDKArticleIE
 from .zhihu import ZhihuIE
 from .zingmp3 import (
