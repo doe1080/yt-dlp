@@ -124,7 +124,7 @@ class ZenStudyIE(ZenStudyBaseIE):
 class ZenStudyChaptersIE(ZenStudyBaseIE):
     IE_NAME = 'zenstudy:chapters'
 
-    _VALID_URL = r'https?://(?:www\.)?nnn\.ed\.nico/courses/(?P<course_id>\d+)/chapters/(?P<id>\d+)'
+    _VALID_URL = r'https?://(?:www\.)?nnn\.ed\.nico/courses/(?P<course_id>\d+)/chapters/(?P<id>\d+)/?(?:[?#]|$)'
     _TESTS = [{
         'url': 'https://www.nnn.ed.nico/courses/634/chapters/20508',
         'info_dict': {
@@ -164,7 +164,7 @@ class ZenStudyChaptersIE(ZenStudyBaseIE):
 class ZenStudyCoursesIE(ZenStudyBaseIE):
     IE_NAME = 'zenstudy:courses'
 
-    _VALID_URL = r'https?://(?:www\.)?nnn\.ed\.nico/courses/(?P<id>\d+)'
+    _VALID_URL = r'https?://(?:www\.)?nnn\.ed\.nico/courses/(?P<id>\d+)/?(?:[?#]|$)'
     _TESTS = [{
         'url': 'https://www.nnn.ed.nico/courses/1068',
         'info_dict': {
