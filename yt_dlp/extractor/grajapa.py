@@ -160,9 +160,12 @@ class GrajapaIE(InfoExtractor):
                     if not endpoint and attrs['class'] != 'user-viewer-opening-movie':
                         break
                     entries.append({
-                        'title': traverse_obj(attrs, ('title', {clean_html}, filter)),
                         **metadata,
                         **self._extract_fotmats(attrs['data-movie-link-id']),
+                        **traverse_obj(attrs, {
+                            'title': ('title', {clean_html}, filter),
+                            'thumbnail': ('src', {urljoin(f'{base_url}/')}),
+                        }),
                     })
         elif 'season_girl' in video_type:
             playlist_title = traverse_obj(webpage, (
