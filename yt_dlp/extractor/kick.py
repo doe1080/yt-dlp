@@ -147,7 +147,7 @@ class KickVODIE(KickBaseIE):
 
     def _real_extract(self, url):
         channel, video_id = self._match_valid_url(url).group('channel', 'id')
-        webpage = self._download_webpage(url, video_id)
+        webpage = self._download_webpage(url, video_id, impersonate=True)
         video = traverse_obj(self._call_api(
             f'v2/channels/{channel}/videos', channel,
         ), (lambda _, v: v['video']['uuid'] == video_id, any))
