@@ -10,7 +10,6 @@ from ..utils import (
     join_nonempty,
     mimetype2ext,
     parse_iso8601,
-    unsmuggle_url,
     update_url_query,
     url_or_none,
 )
@@ -117,26 +116,28 @@ class StreaksBaseIE(InfoExtractor):
 
 class StreaksIE(StreaksBaseIE):
     _VALID_URL = [
-        r'https?://players\.streaks\.jp/(?P<project_id>[\w-]+)/[\da-f]+/index\.html\?(?:[^#]+&)?m=(?P<id>(?:ref:)?[\w-]+)',
+        r'https?://players\.streaks\.jp/(?P<project_id>[\w-]+)/(?P<api_key>[\da-f]+)/index\.html\?(?:[^#]+&)?m=(?P<id>(?:ref:)?[\w-]+)',
         r'https?://playback\.api\.streaks\.jp/v1/projects/(?P<project_id>[\w-]+)/medias/(?P<id>(?:ref:)?[\w-]+)',
     ]
     _EMBED_REGEX = [rf'<iframe\s+[^>]*\bsrc\s*=\s*["\'](?P<url>{_VALID_URL[0]})']
     _TESTS = [{
-        'url': 'https://players.streaks.jp/tipness/08155cd19dc14c12bebefb69b92eafcc/index.html?m=dbdf2df35b4d483ebaeeaeb38c594647',
+        # https://online.tipness.co.jp/contents/9a064492-a62b-5d03-4668-6b40d6325b1e
+        'url': 'https://players.streaks.jp/tipness/08155cd19dc14c12bebefb69b92eafcc/index.html?m=ba2c253508914d9ea061a5f26bc58b20',
         'info_dict': {
-            'id': 'dbdf2df35b4d483ebaeeaeb38c594647',
+            'id': 'ba2c253508914d9ea061a5f26bc58b20',
             'ext': 'mp4',
-            'title': '3shunenCM_edit.mp4',
-            'display_id': 'dbdf2df35b4d483ebaeeaeb38c594647',
-            'duration': 47.533,
+            'title': 'tarun_suimin.mp4',
+            'display_id': 'ba2c253508914d9ea061a5f26bc58b20',
+            'duration': 265.344,
             'live_status': 'not_live',
-            'modified_date': '20230726',
-            'modified_timestamp': 1690356180,
-            'timestamp': 1690355996,
-            'upload_date': '20230726',
+            'modified_date': '20230908',
+            'modified_timestamp': 1694146842,
+            'timestamp': 1694145352,
+            'upload_date': '20230908',
             'uploader_id': 'tipness',
         },
     }, {
+        # https://www.ktv.jp/mycoffeetime/
         'url': 'https://players.streaks.jp/ktv-web/0298e8964c164ab384c07ef6e08c444b/index.html?m=ref:mycoffeetime_250317',
         'info_dict': {
             'id': 'dccdc079e3fd41f88b0c8435e2d453ab',
@@ -153,22 +154,25 @@ class StreaksIE(StreaksBaseIE):
             'uploader_id': 'ktv-web',
         },
     }, {
-        'url': 'https://playback.api.streaks.jp/v1/projects/ktv-web/medias/b5411938e1e5435dac71edf829dd4813',
+        # https://www.ktv.jp/news/articles/?id=24348
+        'url': 'https://playback.api.streaks.jp/v1/projects/ktv-news/medias/788fc689a8824063b55428804db7f4a4',
         'info_dict': {
-            'id': 'b5411938e1e5435dac71edf829dd4813',
+            'id': '788fc689a8824063b55428804db7f4a4',
             'ext': 'mp4',
-            'title': 'KANTELE_SYUSEi_0630',
-            'display_id': 'b5411938e1e5435dac71edf829dd4813',
+            'title': '24348.mp4',
+            'display_id': '788fc689a8824063b55428804db7f4a4',
+            'duration': 50.257,
             'live_status': 'not_live',
-            'modified_date': '20250122',
-            'modified_timestamp': 1737522999,
+            'modified_date': '20260111',
+            'modified_timestamp': 1768122811,
             'thumbnail': r're:https?://.+\.jpg',
-            'timestamp': 1735205137,
-            'upload_date': '20241226',
-            'uploader_id': 'ktv-web',
+            'timestamp': 1768122663,
+            'upload_date': '20260111',
+            'uploader_id': 'ktv-news',
         },
+        'params': {'extractor_args': {'streaks': {'api_key': ['0ff2ccfb6381401582d6ee60e3cb66a1']}}},
     }, {
-        # TVer Olympics: website already down, but api remains accessible
+        # https://tver.jp/olympic/paris2024/live/FBLMTEAM11------------SFNL000100--/
         'url': 'https://playback.api.streaks.jp/v1/projects/tver-olympic/medias/ref:sp_240806_1748_dvr',
         'info_dict': {
             'id': 'c10f7345adb648cf804d7578ab93b2e3',
@@ -183,8 +187,10 @@ class StreaksIE(StreaksBaseIE):
             'upload_date': '20240804',
             'uploader_id': 'tver-olympic',
         },
+        'params': {'extractor_args': {'streaks': {'api_key': ['e09168c4383d4b18949067022558f071']}}},
+        'skip': 'Invalid URL',
     }, {
-        # TBS FREE: 24-hour stream
+        # https://cu.tbs.co.jp/simul/simul-02
         'url': 'https://playback.api.streaks.jp/v1/projects/tbs/medias/ref:simul-02',
         'info_dict': {
             'id': 'c4e83a7b48f4409a96adacec674b4e22',
@@ -198,12 +204,14 @@ class StreaksIE(StreaksBaseIE):
             'upload_date': '20240117',
             'uploader_id': 'tbs',
         },
+        'skip': 'Invalid URL',
     }, {
         # DRM protected
         'url': 'https://players.streaks.jp/sp-jbc/a12d7ee0f40c49d6a0a2bff520639677/index.html?m=5f89c62f37ee4a68be8e6e3b1396c7d8',
         'only_matching': True,
     }]
     _WEBPAGE_TESTS = [{
+        # https://players.streaks.jp/play/719af2a1d2d544e89bcad3456eeae5d9/index.html?m=2d975178293140dc8074a7fc536a7604
         'url': 'https://event.play.jp/playnext2023/',
         'info_dict': {
             'id': '2d975178293140dc8074a7fc536a7604',
@@ -218,6 +226,7 @@ class StreaksIE(StreaksBaseIE):
             'modified_date': '20250213',
             'live_status': 'not_live',
         },
+        'params': {'nocheckcertificate': True},
     }, {
         'url': 'https://wowshop.jp/Page/special/cooking_goods/?bid=wowshop&srsltid=AfmBOor_phUNoPEE_UCPiGGSCMrJE5T2US397smvsbrSdLqUxwON0el4',
         'playlist_mincount': 2,
@@ -228,13 +237,17 @@ class StreaksIE(StreaksBaseIE):
             'age_limit': 0,
             'thumbnail': 'https://wowshop.jp/Page/special/cooking_goods/images/ogp.jpg',
         },
+        'skip': 'Invalid URL',
     }]
 
     def _real_extract(self, url):
-        url, smuggled_data = unsmuggle_url(url, {})
         project_id, media_id = self._match_valid_url(url).group('project_id', 'id')
+        if urllib.parse.urlparse(url).hostname == 'players.streaks.jp':
+            api_key = self._match_valid_url(url).group('api_key')
+        else:
+            api_key = self._configuration_arg('api_key', [None])[0]
 
         return self._extract_from_streaks_api(
             project_id, media_id, headers=filter_dict({
-                'X-Streaks-Api-Key': smuggled_data.get('api_key'),
+                'X-Streaks-Api-Key': api_key,
             }))
