@@ -1349,11 +1349,7 @@ from .niconico import (
     NicovideoSearchURLIE,
     NicovideoTagURLIE,
 )
-from .niconicochannelplus import (
-    NiconicoChannelPlusChannelLivesIE,
-    NiconicoChannelPlusChannelVideosIE,
-    NiconicoChannelPlusIE,
-)
+from .niconicochannelplus import NiconicoChannelPlusIE
 from .ninaprotocol import NinaProtocolIE
 from .ninecninemedia import (
     CPTwentyFourIE,
