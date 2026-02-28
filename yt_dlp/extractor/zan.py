@@ -16,7 +16,7 @@ class ZanIE(InfoExtractor):
     IE_DESC = 'Z-aN'
 
     _BASE_URL = 'https://www.zan-live.com'
-    _VALID_URL = r'https?://(www\.)?zan-live\.com/[^/]+/live/play/\d+/(?P<id>\d+)'
+    _VALID_URL = r'https?://(www\.)?zan-live\.com/[^/?#]+/live/play/\d+/(?P<id>\d+)'
     _TESTS = [{
         'url': 'https://www.zan-live.com/en/live/play/1797/663',
         'info_dict': {
@@ -29,14 +29,14 @@ class ZanIE(InfoExtractor):
             'thumbnail': r're:https?://storage\.zan-live\.com/image/.+\.(?:jpe?g|png)',
         },
     }, {
-        'url': 'https://www.zan-live.com/ja/live/play/4137/2640',
+        'url': 'https://www.zan-live.com/ja/live/play/6265/3950',
         'info_dict': {
-            'id': '2640',
+            'id': '3950',
             'ext': 'mp4',
-            'title': '「マッシュル-MASHLE-」THE STAGE',
-            'description': 'md5:41d5108579b20b851a86a5d11fe8fdaa',
-            'release_date': '20240830',
-            'release_timestamp': 1724986800,
+            'title': '[全編無料]小児がん治療支援啓発番組「LEC TV 2026 ～子どもたちの『生きる力』をつくる～ supported by HIROTSUバイオサイエンス」',
+            'description': 'md5:a3617d9b0b9e94695638326173995089',
+            'release_date': '20260215',
+            'release_timestamp': 1771151100,
             'thumbnail': r're:https?://storage\.zan-live\.com/image/.+\.(?:jpe?g|png)',
         },
     }]
@@ -52,7 +52,7 @@ class ZanIE(InfoExtractor):
 
         status = self._download_json(
             f'{self._BASE_URL}/api/live/{video_id}/getLiveStatus', video_id, headers={
-                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                'Content-Type': 'application/x-www-form-urlencoded',
                 'X-Csrf-Token': csrf_token,
             }, data=urlencode_postdata({
                 'pct': pct,
@@ -61,13 +61,13 @@ class ZanIE(InfoExtractor):
         if not traverse_obj(status, ('isSuccess', {bool})):
             self.raise_login_required()
 
-        result = status['result']
-        if not traverse_obj(result, ('isVod', {bool})):
-            raise ExtractorError('Video is not yet archived', expected=True)
-        elif traverse_obj(result, ('isFinished', {bool})):
-            raise ExtractorError('Video Expired', expected=True)
-        elif not traverse_obj(result, ('canPlay', {bool})):
-            raise ExtractorError('Ticket Expired', expected=True)
+        for key, required, error_message in (
+            ('isVod', True, 'Video is not yet archived'),
+            ('isFinished', False, 'Video is no longer available'),
+            ('canPlay', True, 'Ticket has expired'),
+        ):
+            if traverse_obj(status, ('result', key, {bool})) != required:
+                raise ExtractorError(error_message, expected=True)
 
         m3u8_url = self._html_search_meta('live-url', webpage, fatal=True)
         formats = self._extract_m3u8_formats(m3u8_url, video_id, 'mp4')
@@ -77,13 +77,14 @@ class ZanIE(InfoExtractor):
         detail_url = traverse_obj(webpage, (
             {find_element(cls='linkTxt')},
             {find_element(cls='d-flex align-items-center', html=True)},
-            {extract_attributes}, 'href', {urljoin(self._BASE_URL)}))
+            {extract_attributes}, 'href', {urljoin(f'{self._BASE_URL}/')}))
         detail = self._download_webpage(detail_url, video_id)
 
         return {
             'id': video_id,
             'title': clean_html(self._og_search_title(detail)),
-            'description': traverse_obj(detail, ({find_element(cls='groupDetail')}, {clean_html})),
+            'description': traverse_obj(detail, (
+                ({find_element(cls='p-eventinfo__detail')}, {find_element(cls='groupDetail')}), {clean_html}, filter, any)),
             'formats': formats,
             'release_timestamp': parse_iso8601(self._html_search_meta('open-live-date', webpage)),
             'thumbnail': self._og_search_thumbnail(detail),
