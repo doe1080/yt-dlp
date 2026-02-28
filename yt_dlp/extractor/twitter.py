@@ -1543,7 +1543,6 @@ class TwitterBroadcastIE(TwitterBaseIE, PeriscopeBaseIE):
             {'ids': broadcast_id})['broadcasts'][broadcast_id]
         if not broadcast:
             raise ExtractorError('Broadcast no longer exists', expected=True)
-
         info = self._parse_broadcast_data(broadcast, broadcast_id)
         info.update({
             'display_id': display_id,
