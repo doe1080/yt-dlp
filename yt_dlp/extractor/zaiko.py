@@ -85,7 +85,10 @@ class ZaikoIE(ZaikoBaseIE):
         if traverse_obj(initial_event_info, ('is_jwt_protected', {bool})):
             stream_url = self._download_json(
                 initial_event_info['jwt_token_url'], video_id, 'Downloading JWT-protected stream URL',
-                'Failed to download JWT-protected stream URL')['playback_url']
+                'Failed to download JWT-protected stream URL', headers={
+                    'Origin': 'https://live.zaiko.services',
+                    'Referer': 'https://live.zaiko.services/',
+                })['playback_url']
         else:
             stream_url = traverse_obj(initial_event_info, ('endpoint', {url_or_none}))
 
