@@ -1436,6 +1436,7 @@ from .openrec import (
     OpenRecCaptureIE,
     OpenRecIE,
     OpenRecMovieIE,
+    OpenRecPlaylistIE,
 )
 from .ora import OraTVIE
 from .orf import (

@@ -1,153 +1,568 @@
+import collections
+import datetime as dt
+import itertools
+import json
+import xml.etree.ElementTree
+
 from .common import InfoExtractor
 from ..utils import (
     ExtractorError,
-    get_first,
+    clean_html,
+    extract_attributes,
     int_or_none,
+    parse_iso8601,
+    str_or_none,
+    url_or_none,
+    urljoin,
+)
+from ..utils.traversal import (
+    find_element,
+    find_elements,
     traverse_obj,
-    try_get,
-    unified_strdate,
-    unified_timestamp,
 )
 
 
 class OpenRecBaseIE(InfoExtractor):
-    _M3U8_HEADERS = {'Referer': 'https://www.openrec.tv/'}
+    _API_BASE = 'https://apiv5.openrec.tv/api/v5'
+    _API_HEADERS = {}
+    _BASE_URL = 'https://www.openrec.tv'
+    _HEADERS = {'Referer': f'{_BASE_URL}/'}
+    _NETRC_MACHINE = 'openrec'
+
+    def _perform_login(self, username, password):
+        if self._get_cookies(self._BASE_URL).get('access-token'):
+            return
+
+        login = self._download_json(
+            f'{self._BASE_URL}/apiv5/email/login',
+            None, 'Logging in', headers={
+                'Content-Type': 'application/json',
+            }, data=json.dumps({
+                'email': username,
+                'password': password,
+            }).encode())
+        if traverse_obj(login, ('status', {int_or_none})) != 0:
+            err_msg = traverse_obj(login, ('message', {clean_html}, filter))
+            raise ExtractorError(err_msg or 'Failed to log in', expected=True)
+
+    def _real_initialize(self):
+        cookies = self._get_cookies(self._BASE_URL)
+        self._API_HEADERS.update(traverse_obj(cookies, {
+            'access-token': ('access_token', 'value', {str}, filter),
+            'random': ('random', 'value', {str}, filter),
+            'token': ('token', 'value', {str}, filter),
+            'uuid': ('uuid', 'value', {str}, filter),
+        }))
 
     def _extract_pagestore(self, webpage, video_id):
-        return self._parse_json(
-            self._search_regex(r'(?m)window\.pageStore\s*=\s*(\{.+?\});$', webpage, 'window.pageStore'), video_id)
+        return self._search_json(
+            r'window\.pageStore\s*=', webpage, 'window.pageStore', video_id)
 
-    def _expand_media(self, video_id, media):
-        for name, m3u8_url in (media or {}).items():
-            if not m3u8_url:
-                continue
-            yield from self._extract_m3u8_formats(
-                m3u8_url, video_id, ext='mp4', m3u8_id=name, headers=self._M3U8_HEADERS)
+    def _call_api(self, path, item_id):
+        return self._download_json(
+            f'{self._API_BASE}/{path}', item_id,
+            headers=self._API_HEADERS, expected_status=401)
 
-    def _extract_movie(self, webpage, video_id, name, is_live):
-        window_stores = self._extract_pagestore(webpage, video_id)
-        movie_stores = [
-            # extract all three important data (most of data are duplicated each other, but slightly different!)
-            traverse_obj(window_stores, ('v8', 'state', 'movie'), expected_type=dict),
-            traverse_obj(window_stores, ('v8', 'movie'), expected_type=dict),
-            traverse_obj(window_stores, 'movieStore', expected_type=dict),
-        ]
-        if not any(movie_stores):
-            raise ExtractorError(f'Failed to extract {name} info')
+    def _parse_openrec_metadata(self, page_store, video_id):
+        info = traverse_obj(page_store, ('v8', 'movie', {dict}))
 
-        formats = list(self._expand_media(video_id, get_first(movie_stores, 'media')))
-        if not formats:
-            # archived livestreams or subscriber-only videos
-            cookies = self._get_cookies('https://www.openrec.tv/')
-            detail = self._download_json(
-                f'https://apiv5.openrec.tv/api/v5/movies/{video_id}/detail', video_id,
-                headers={
-                    'Origin': 'https://www.openrec.tv',
-                    'Referer': 'https://www.openrec.tv/',
-                    'access-token': try_get(cookies, lambda x: x.get('access_token').value),
-                    'uuid': try_get(cookies, lambda x: x.get('uuid').value),
-                })
-            new_media = traverse_obj(detail, ('data', 'items', ..., 'media'), get_all=False)
-            formats = list(self._expand_media(video_id, new_media))
-            is_live = False
+        target_members = traverse_obj(info, (
+            'targetMembers', ..., 'type', {str}, filter, any))
+        needs_subscription = target_members == 'subscription'
+        needs_auth = target_members == 'ppv'
 
-        return {
+        me = self._call_api('users/me', video_id)
+        need_premium = traverse_obj(info, (
+            'publicType', {str}, filter)) == 'premium'
+        is_premium = traverse_obj(me, (
+            'data', 'items', ..., 'is_premium', {bool}, any)) or False
+
+        detail = self._call_api(f'movies/{video_id}/detail', video_id)
+        is_member = traverse_obj(detail, (
+            'data', 'items', ..., 'membership', 'is_active', {bool}, any)) or False
+
+        if need_premium and not is_premium:
+            self.raise_login_required(
+                'This content is only available for premium users', metadata_available=True)
+        elif needs_subscription and not is_member:
+            self.raise_login_required(
+                'This content is only available for channel subscribers', metadata_available=True)
+        # PPV ticket validation is required
+
+        return info, detail, {
             'id': video_id,
-            'title': get_first(movie_stores, 'title'),
-            'description': get_first(movie_stores, 'introduction'),
-            'thumbnail': get_first(movie_stores, 'thumbnailUrl'),
-            'formats': formats,
-            'uploader': get_first(movie_stores, ('channel', 'user', 'name')),
-            'uploader_id': get_first(movie_stores, ('channel', 'user', 'id')),
-            'timestamp': int_or_none(get_first(movie_stores, ['publishedAt', 'time']), scale=1000) or unified_timestamp(get_first(movie_stores, 'publishedAt')),
-            'is_live': is_live,
-            'http_headers': self._M3U8_HEADERS,
+            'availability': self._availability(
+                needs_premium=need_premium,
+                needs_subscription=needs_subscription,
+                needs_auth=needs_auth,
+            ) or 'public',
+            'http_headers': self._HEADERS,
+            'tags': traverse_obj(page_store, (
+                'movieStore', 'tags', ..., {clean_html}, filter, all, filter)),
+            **traverse_obj(info, {
+                'title': ('title', {clean_html}, filter),
+                'cast': ('casts', ..., 'name', {clean_html}, filter, all, filter),
+                'categories': ('game', 'title', {clean_html}, filter, all, filter),
+                'description': ('introduction', {clean_html}, filter),
+                'duration': ('playTime', 'value', {int_or_none(scale=1000)}),
+                'thumbnail': (('lThumbnailUrl', 'thumbnailUrl'), {url_or_none}, any),
+                'timestamp': ('startedAt', 'time', {int_or_none(scale=1000)}),
+                'view_count': ('totalViews', {int_or_none}),
+            }),
+            **traverse_obj(info, ('channel', 'user', {
+                'channel_follower_count': ('followers', {int_or_none}),
+                'channel_id': ('id', {str}),
+                'channel': ('name', {clean_html}, filter),
+                'channel_is_verified': ('isOfficial', {bool}),
+            })),
         }
 
 
 class OpenRecIE(OpenRecBaseIE):
     IE_NAME = 'openrec'
-    _VALID_URL = r'https?://(?:www\.)?openrec\.tv/live/(?P<id>[^/?#]+)'
+    IE_DESC = 'OPENREC.tv'
+
+    _VALID_URL = r'https?://(?:www\.)?openrec\.tv/(?:m/)?live/(?P<id>[^/?#]+)'
     _TESTS = [{
-        'url': 'https://www.openrec.tv/live/2p8v31qe4zy',
-        'only_matching': True,
+        'url': 'https://www.openrec.tv/live/e2zwj0mp6ro',
+        'info_dict': {
+            'id': 'e2zwj0mp6ro',
+            'ext': 'mp4',
+            'title': '収束',
+            'availability': 'public',
+            'categories': ['雑談'],
+            'channel': 'おおえのたかゆき',
+            'channel_follower_count': int,
+            'channel_id': 'oekaki',
+            'channel_is_verified': True,
+            'comment_count': int,
+            'description': 'md5:62260f3060b40187282f3213bcd97abd',
+            'duration': 14257,
+            'live_status': 'was_live',
+            'tags': ['雑談'],
+            'thumbnail': r're:https?://.+',
+            'timestamp': 1685271819,
+            'upload_date': '20230528',
+            'view_count': int,
+        },
     }, {
-        'url': 'https://www.openrec.tv/live/wez93eqvjzl',
-        'only_matching': True,
+        # SP
+        'url': 'https://www.openrec.tv/live/2p8vv29438y',
+        'info_dict': {
+            'id': '2p8vv29438y',
+            'ext': 'mp4',
+            'title': 'それいけ加藤純一探検隊！ 〜南の孤島で希少生物を探せスペシャル〜 (OPENRECプレミアム会員限定)',
+            'availability': 'premium_only',
+            'categories': ['雑談'],
+            'channel': '加藤 純一',
+            'channel_follower_count': int,
+            'channel_id': 'junichi_kato_channel',
+            'channel_is_verified': True,
+            'comment_count': int,
+            'description': 'md5:693bc0c838ff6080f9ca00d41dc5e840',
+            'duration': 24336,
+            'live_status': 'was_live',
+            'release_date': '20251008',
+            'release_timestamp': 1759892400,
+            'thumbnail': r're:https?://.+',
+            'timestamp': 1759891802,
+            'upload_date': '20251008',
+            'view_count': int,
+        },
+    }, {
+        # Members only
+        'url': 'https://www.openrec.tv/live/kdr7nldqgzj',
+        'info_dict': {
+            'id': 'kdr7nldqgzj',
+            'ext': 'mp4',
+            'title': '【ゲーム実況生配信】小森結梨のひきこもりゲーム部屋#20[ゲスト:梅澤めぐ]',
+            'availability': 'subscriber_only',
+            'categories': ['Human Fall Flat'],
+            'channel': 'セカンドショットGAME部',
+            'channel_follower_count': int,
+            'channel_id': 'secondshot_games',
+            'channel_is_verified': True,
+            'chapters': [
+                {'start_time': 0, 'title': 'バイオハザード RE：2', 'end_time': 443},
+                {'start_time': 443, 'title': 'ぷにゃん', 'end_time': 3215},
+                {'start_time': 3215, 'title': 'Human Fall Flat', 'end_time': 7163},
+            ],
+            'comment_count': int,
+            'description': 'md5:b77fac6fb0ad86048dc6377ec2c22646',
+            'duration': 7163,
+            'live_status': 'was_live',
+            'release_date': '20260220',
+            'release_timestamp': 1771581300,
+            'tags': ['声優'],
+            'thumbnail': r're:https?://.+',
+            'timestamp': 1771581322,
+            'upload_date': '20260220',
+            'view_count': int,
+        },
+        'skip': 'Subscribers only',
+    }, {
+        # PPV
+        'url': 'https://www.openrec.tv/live/e5rk93xn1zv',
+        'info_dict': {
+            'id': 'e5rk93xn1zv',
+            'ext': 'mp4',
+            'title': '三川華月生誕パーティー2026 【ゲスト：幸村恵理/北原沙弥香】',
+            'availability': 'needs_auth',
+            'categories': ['雑談'],
+            'channel': '三川華月の開店！はるちゃん食堂',
+            'channel_follower_count': int,
+            'channel_id': 'haruna_harusyoku',
+            'channel_is_verified': True,
+            'description': 'md5:912d0c2d60d343e28300fc18bd491d6c',
+            'duration': 6451,
+            'live_status': 'was_live',
+            'release_date': '20260222',
+            'release_timestamp': 1771758000,
+            'thumbnail': r're:https?://.+',
+            'timestamp': 1771758062,
+            'upload_date': '20260222',
+            'view_count': int,
+        },
+        'skip': 'Paid video',
     }]
+
+    @staticmethod
+    def _json2xml(subs, started_at):
+        def filter_valid(items):
+            yield from traverse_obj(items, (
+                lambda _, v: clean_html(v['message']) and not v['stamp']))
+
+        total = collections.Counter(
+            traverse_obj(subs, (..., 'posted_at', {parse_iso8601})))
+        order = collections.defaultdict(int)
+
+        root = xml.etree.ElementTree.Element('packet')
+        for i, s in enumerate(filter_valid(subs), 1):
+            posted_at = traverse_obj(s, ('posted_at', {parse_iso8601}))
+            # Offset is currently 1 second and needs testing
+            offset = order[posted_at] / total[posted_at] - 1
+            order[posted_at] += 1
+            vpos = int_or_none((posted_at - started_at + offset) * 100)
+
+            xml.etree.ElementTree.SubElement(
+                root, 'chat',
+                premium=traverse_obj(s, (
+                    'user', 'is_premium', {bool}, {lambda x: '1' if x else '0'})),
+                user_id=traverse_obj(s, ('user', 'id', {str_or_none})),
+                name=traverse_obj(s, ('user', 'nickname', {clean_html}, filter)),
+                no=str_or_none(i),
+                vpos=str_or_none(vpos),
+                date=str_or_none(posted_at),
+            ).text = traverse_obj(s, ('message', {clean_html}, filter))
+        xml.etree.ElementTree.indent(root, space='  ')
+
+        return xml.etree.ElementTree.tostring(
+            root, encoding='utf-8', xml_declaration=True).decode()
+
+    def _get_subtitles(self, duration, started_at, video_id):
+        ended_at = started_at + duration
+        timestamp = started_at
+        subs = []
+        for page in itertools.count(1):
+            created_at = dt.datetime.fromtimestamp(
+                timestamp, dt.timezone(dt.timedelta(hours=9))).strftime('%Y-%m-%dT%H:%M:%S%z')
+
+            chats = self._download_json(
+                f'https://public.openrec.tv/external/api/v5/movies/{video_id}/chats',
+                video_id, f'Downloading chats page {page}', query={
+                    'from_created_at': created_at,
+                    'is_including_system_message': 'true',
+                })
+            if not chats:
+                break
+
+            subs.extend(chats)
+            last_posted_at = traverse_obj(chats, (-1, 'posted_at', {parse_iso8601}))
+            if ended_at < last_posted_at:
+                break
+
+            timestamp = last_posted_at + 1
+
+        return {
+            'chats': [{
+                'data': json.dumps(subs, indent=2, ensure_ascii=False),
+                'ext': 'json',
+            }, {
+                'data': self._json2xml(subs, started_at),
+                'ext': 'xml',
+            }],
+        }
 
     def _real_extract(self, url):
         video_id = self._match_id(url)
-        webpage = self._download_webpage(f'https://www.openrec.tv/live/{video_id}', video_id)
+        webpage = self._download_webpage(url, video_id)
+        page_store = self._extract_pagestore(webpage, video_id)
 
-        return self._extract_movie(webpage, video_id, 'live', True)
+        info, detail, metadata = self._parse_openrec_metadata(page_store, video_id)
+        live_status = {
+            'ARCHIVE': 'was_live',
+            'COMING_UP': 'is_upcoming',
+            'LIVE_STREAMING': 'is_live',
+            'UPLOADED': 'not_live',
+        }.get(info.get('onAirStatus'))
+
+        release_timestamp = traverse_obj(page_store, ('movieStore', 'willStartAt', {parse_iso8601}))
+        if live_status == 'is_upcoming':
+            self.raise_no_formats(
+                f'This content is scheduled to start at {release_timestamp}', expected=True)
+
+            return {
+                'id': video_id,
+                'live_status': live_status,
+                'release_timestamp': release_timestamp,
+            }
+
+        duration = metadata['duration']
+        started_at = metadata['timestamp']
+
+        chapters = []
+        for chapter in traverse_obj(info, (
+            'chapters', lambda _, v: int_or_none(v['chapterAt']['time']),
+        )):
+            chapter_at = traverse_obj(chapter, ('chapterAt', 'time', {int_or_none(scale=1000)}))
+            chapters.append({
+                'start_time': chapter_at - started_at,
+                'title': traverse_obj(chapter, ('title', {clean_html}, filter)),
+            })
+
+        formats = []
+        is_dvr = live_status == 'is_live' and self.get_param('live_from_start')
+        media_keys = ('url_dvr', 'url_dvr_audio') if is_dvr else ('url', 'url_audio')
+        for m3u8_url in traverse_obj(detail, (
+            'data', 'items', ...,
+            ('media', 'subs_trial_media'), media_keys, {url_or_none},
+        )):
+            fmts = self._extract_m3u8_formats(
+                m3u8_url, video_id, 'mp4', headers=self._HEADERS)
+            for fmt in fmts:
+                if is_dvr:
+                    fmt.setdefault('downloader_options', {}).update({'ffmpeg_args': ['-live_start_index', '0']})
+                    fmt['is_from_start'] = True
+            formats.extend(fmts)
+
+        return {
+            'chapters': chapters or None,
+            'comment_count': traverse_obj(page_store, (
+                'commentStore', 'commentCount', {int_or_none})),
+            'formats': formats,
+            'live_status': live_status,
+            'release_timestamp': release_timestamp,
+            'subtitles': self.extract_subtitles(duration, started_at, video_id),
+            **metadata,
+        }
 
 
 class OpenRecCaptureIE(OpenRecBaseIE):
     IE_NAME = 'openrec:capture'
-    _VALID_URL = r'https?://(?:www\.)?openrec\.tv/capture/(?P<id>[^/?#]+)'
+    _VALID_URL = r'https?://(?:www\.)?openrec\.tv/(?:m/)?capture/(?P<id>[^/?#]+)'
     _TESTS = [{
         'url': 'https://www.openrec.tv/capture/l9nk2x4gn14',
-        'only_matching': True,
+        'info_dict': {
+            'id': 'l9nk2x4gn14',
+            'ext': 'mp4',
+            'title': 'すもしゅら「助けてぇぇ、おとこのひとーー」',
+            'channel': 'すもも',
+            'channel_id': 'sumomo_xqx',
+            'duration': 37,
+            'thumbnail': r're:https?://.+',
+            'timestamp': 1612509889,
+            'upload_date': '20210205',
+        },
     }, {
         'url': 'https://www.openrec.tv/capture/mldjr82p7qk',
         'info_dict': {
             'id': 'mldjr82p7qk',
+            'ext': 'mp4',
             'title': 'たいじの恥ずかしい英語力',
-            'uploader': 'たいちゃんねる',
-            'uploader_id': 'Yaritaiji',
-            'upload_date': '20210803',
+            'channel': 'たいちゃんねる',
+            'channel_id': 'Yaritaiji',
+            'duration': 46,
+            'thumbnail': r're:https?://.+',
+            'timestamp': 1627926283,
+            'upload_date': '20210802',
         },
     }]
 
     def _real_extract(self, url):
         video_id = self._match_id(url)
-        webpage = self._download_webpage(f'https://www.openrec.tv/capture/{video_id}', video_id)
+        webpage = self._download_webpage(url, video_id)
+        page_store = self._extract_pagestore(webpage, video_id)
 
-        window_stores = self._extract_pagestore(webpage, video_id)
-        movie_store = window_stores.get('movie')
-
-        capture_data = window_stores.get('capture')
-        if not capture_data:
-            raise ExtractorError('Cannot extract title')
-
-        formats = self._extract_m3u8_formats(
-            capture_data.get('source'), video_id, ext='mp4', headers=self._M3U8_HEADERS)
+        capture = page_store['capture']
+        m3u8_url = traverse_obj(capture, ('source', {url_or_none}))
 
         return {
             'id': video_id,
-            'title': capture_data.get('title'),
-            'thumbnail': capture_data.get('thumbnailUrl'),
-            'formats': formats,
-            'timestamp': unified_timestamp(traverse_obj(movie_store, 'createdAt', expected_type=str)),
-            'uploader': traverse_obj(movie_store, ('channel', 'name'), expected_type=str),
-            'uploader_id': traverse_obj(movie_store, ('channel', 'id'), expected_type=str),
-            'upload_date': unified_strdate(capture_data.get('createdAt')),
-            'http_headers': self._M3U8_HEADERS,
+            'formats': self._extract_m3u8_formats(
+                m3u8_url, video_id, 'mp4', headers=self._HEADERS),
+            'http_headers': self._HEADERS,
+            **traverse_obj(page_store, ('movie', 'channel', {
+                'channel': ('name', {clean_html}, filter),
+                'channel_id': ('id', {str}),
+            })),
+            **traverse_obj(capture, {
+                'title': ('title', {clean_html}, filter),
+                'duration': ({lambda x: int_or_none(x['endTime']) - int_or_none(x['startTime'])}),
+                'thumbnail': ('thumbnailUrl', {url_or_none}),
+                'timestamp': ('publishedAt', {parse_iso8601}),
+            }),
         }
 
 
 class OpenRecMovieIE(OpenRecBaseIE):
     IE_NAME = 'openrec:movie'
-    _VALID_URL = r'https?://(?:www\.)?openrec\.tv/movie/(?P<id>[^/?#]+)'
+    _VALID_URL = r'https?://(?:www\.)?openrec\.tv/(?:m/)?movie/(?P<id>[^/?#]+)'
     _TESTS = [{
-        'url': 'https://www.openrec.tv/movie/nqz5xl5km8v',
+        'url': 'https://www.openrec.tv/movie/e5rk9k4o6zv',
         'info_dict': {
-            'id': 'nqz5xl5km8v',
-            'title': '限定コミュニティ(Discord)参加方法ご説明動画',
-            'description': 'md5:ebd563e5f5b060cda2f02bf26b14d87f',
-            'thumbnail': r're:https://.+',
-            'uploader': 'タイキとカズヒロ',
-            'uploader_id': 'taiki_to_kazuhiro',
-            'timestamp': 1638856800,
+            'id': 'e5rk9k4o6zv',
+            'ext': 'mp4',
+            'title': 'みゃこRaMuの企画会議#3 ～2人のやってみたいこと～',
+            'availability': 'public',
+            'categories': ['雑談'],
+            'channel': 'みゃことRaMuが暇してるってよ。',
+            'channel_follower_count': int,
+            'channel_id': 'myakoramu',
+            'channel_is_verified': True,
+            'description': 'md5:90924fd73356ebd574bec8d761d4fa62',
+            'duration': 771,
+            'tags': ['雑談'],
+            'thumbnail': r're:https?://.+',
+            'view_count': int,
         },
     }, {
-        'url': 'https://www.openrec.tv/movie/2p8vvex548y?playlist_id=98brq96vvsgn2nd',
-        'only_matching': True,
+        # Members only
+        'url': 'https://www.openrec.tv/movie/n9ze6q3eo84',
+        'info_dict': {
+            'id': 'n9ze6q3eo84',
+            'ext': 'mp4',
+            'title': '大西亜玖璃・高尾奏音のあぐのんる～むらぼ♪第123回傑作選vol.3【高画質・完全版】',
+            'availability': 'subscriber_only',
+            'categories': ['雑談'],
+            'channel': 'セカンドショットGAME部',
+            'channel_follower_count': int,
+            'channel_id': 'secondshot_games',
+            'channel_is_verified': True,
+            'description': 'md5:b7ab5ddd71ba5edc1141cb427af7a9c6',
+            'duration': 1800,
+            'tags': ['声優'],
+            'thumbnail': r're:https?://.+',
+            'view_count': int,
+        },
+        'skip': 'Subscribers only',
+    }, {
+        # PPV
+        'url': 'https://www.openrec.tv/movie/em8xvd4ljr2',
+        'info_dict': {
+            'id': 'em8xvd4ljr2',
+            'ext': 'mp4',
+            'title': '【PPV購入特典映像】KAWAII LAB. SESSION in OKINAWA',
+            'availability': 'needs_auth',
+            'categories': ['ミュージック'],
+            'channel': 'KAWAII LAB.チャンネル',
+            'channel_follower_count': int,
+            'channel_id': 'KAWAIILAB',
+            'channel_is_verified': True,
+            'description': 'md5:e9f67d8648d3cbe35df1dd689afc29a8',
+            'duration': 2002,
+            'tags': ['アイドル'],
+            'thumbnail': r're:https?://.+',
+            'view_count': int,
+        },
+        'skip': 'Paid video',
     }]
 
     def _real_extract(self, url):
         video_id = self._match_id(url)
-        webpage = self._download_webpage(f'https://www.openrec.tv/movie/{video_id}', video_id)
+        webpage = self._download_webpage(url, video_id)
+        page_store = self._extract_pagestore(webpage, video_id)
+        _, detail, metadata = self._parse_openrec_metadata(page_store, video_id)
 
-        return self._extract_movie(webpage, video_id, 'movie', False)
+        formats = []
+        for m3u8_url in traverse_obj(detail, (
+            'data', 'items', ..., 'media',
+            ('url', 'url_audio'), {url_or_none},
+        )):
+            formats.extend(self._extract_m3u8_formats(
+                m3u8_url, video_id, 'mp4', headers=self._HEADERS))
+
+        return {
+            'formats': formats,
+            **metadata,
+        }
+
+
+class OpenRecPlaylistIE(OpenRecBaseIE):
+    IE_NAME = 'openrec:playlist'
+
+    _VALID_URL = r'https?://(?:www\.)?openrec\.tv/(?:m/)?user/[^/?#]+/playlist/(?P<id>[^/?#]+)'
+    _TESTS = [{
+        # live
+        'url': 'https://www.openrec.tv/user/DbD_BPF/playlist/j59svruhtua2z8t',
+        'info_dict': {
+            'id': 'j59svruhtua2z8t',
+            'title': 'BPFのおすすめ',
+        },
+        'playlist_mincount': 10,
+    }, {
+        # capture
+        'url': 'https://www.openrec.tv/user/sagara_mayu/playlist/xngNMzv71yLjGdW',
+        'info_dict': {
+            'id': 'xngNMzv71yLjGdW',
+            'title': '相良茉優のFAN!FUN!FACTORY!キャプチャ',
+        },
+        'playlist_mincount': 4,
+    }, {
+        # movie
+        'url': 'https://www.openrec.tv/user/oreranohonoka/playlist/sficoshvi9dgkqh',
+        'info_dict': {
+            'id': 'sficoshvi9dgkqh',
+            'title': 'SP（スペシャル）映像：（短編映像）おにいたむプランだけが視聴できます',
+        },
+        'playlist_mincount': 111,
+    }]
+
+    def _entries(self, items):
+        for movie in traverse_obj(items, (
+            'playlist_movies',
+            lambda _, v: str_or_none(v['movie']['id']),
+        )):
+            is_live = traverse_obj(movie, ('movie', 'is_live', {bool}))
+            path, ie = ('live', OpenRecIE) if is_live else ('movie', OpenRecMovieIE)
+            movie_id = movie['movie']['id']
+            yield self.url_result(
+                f'{self._BASE_URL}/{path}/{movie_id}', ie)
+
+        for capture in traverse_obj(items, (
+            'playlist_captures',
+            lambda _, v: str_or_none(v['capture_relation']['capture']['id']),
+        )):
+            capture_id = capture['capture_relation']['capture']['id']
+            yield self.url_result(
+                f'{self._BASE_URL}/capture/{capture_id}', OpenRecCaptureIE)
+
+    def _real_extract(self, url):
+        playlist_id = self._match_id(url)
+        me = self._call_api(f'users/me/playlists/{playlist_id}', playlist_id)
+
+        if items := traverse_obj(me, (
+            'data', 'items', ..., {dict}, any,
+        )):
+            return self.playlist_result(
+                self._entries(items), playlist_id,
+                traverse_obj(items, ('title', {clean_html}, filter)))
+
+        webpage = self._download_webpage(url, playlist_id)
+        playlist_title = traverse_obj(webpage, (
+            {find_element(cls='sc-1ak77bz-10')}, {clean_html}, filter))
+
+        return self.playlist_from_matches(traverse_obj(webpage, (
+            {find_elements(cls='sc-vc0xhn-0')}, ...,
+            {find_element(cls='sc-1ddd11y-0', html=True)},
+            {extract_attributes}, 'href', {str},
+        )), playlist_id, playlist_title, getter=urljoin(f'{self._BASE_URL}/'))
