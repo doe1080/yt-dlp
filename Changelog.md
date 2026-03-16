@@ -4,6 +4,31 @@
 # To create a release, dispatch the https://github.com/yt-dlp/yt-dlp/actions/workflows/release.yml workflow on master
 -->
 
+### 2026.03.13
+
+#### Extractor changes
+- **tiktok**: [Fix challenge solving](https://github.com/yt-dlp/yt-dlp/commit/db62e438a15743b156ca5ebfc6dbe160e9bc1662) ([#16223](https://github.com/yt-dlp/yt-dlp/issues/16223)) by [bashonly](https://github.com/bashonly)
+- **youtube**
+    - [Fix `android_vr` player client](https://github.com/yt-dlp/yt-dlp/commit/ff459e5fc04b1a061212672626b7bfa23ff3cdcd) ([#16168](https://github.com/yt-dlp/yt-dlp/issues/16168)) by [gamer191](https://github.com/gamer191)
+    - [Fix `use_ad_playback_context` extractor-arg](https://github.com/yt-dlp/yt-dlp/commit/7e145ac1cae8f891e18c9375fa23097f1dfa0b19) ([#16196](https://github.com/yt-dlp/yt-dlp/issues/16196)) by [bashonly](https://github.com/bashonly)
+    - [Fix `web_embedded` player client](https://github.com/yt-dlp/yt-dlp/commit/f2bd3202c0ffa3f0c0069c44ca53b625dca568bc) ([#16177](https://github.com/yt-dlp/yt-dlp/issues/16177)) by [bashonly](https://github.com/bashonly), [SparseOrnament15](https://github.com/SparseOrnament15)
+    - [Request `web_safari` & `web_creator` client configs](https://github.com/yt-dlp/yt-dlp/commit/48a61d0f38b156785d24df628d42892441e008c4) ([#16198](https://github.com/yt-dlp/yt-dlp/issues/16198)) by [bashonly](https://github.com/bashonly)
+    - [Update ejs to 0.7.0](https://github.com/yt-dlp/yt-dlp/commit/92f1d99dbe1e10d942ef0963f625dbc5bc0768aa) ([#16231](https://github.com/yt-dlp/yt-dlp/issues/16231)) by [bashonly](https://github.com/bashonly), [Grub4K](https://github.com/Grub4K)
+    - tab
+        - [Fix album extraction](https://github.com/yt-dlp/yt-dlp/commit/ae025da02364f4d085953f41fd0d32ade3c4afb9) ([#16041](https://github.com/yt-dlp/yt-dlp/issues/16041)) by [FriederHannenheim](https://github.com/FriederHannenheim)
+        - [Improve description extraction](https://github.com/yt-dlp/yt-dlp/commit/3e36cf9cdb12ef566416c5620a1a95b5a0221017) ([#16057](https://github.com/yt-dlp/yt-dlp/issues/16057)) by [Peter-Devine](https://github.com/Peter-Devine)
+
+### 2026.03.03
+
+#### Extractor changes
+- **aenetworks**: [Fix extraction](https://github.com/yt-dlp/yt-dlp/commit/338dbebdb8627a95bd8f72ed86fdc2d50c8e2d14) ([#16036](https://github.com/yt-dlp/yt-dlp/issues/16036)) by [bashonly](https://github.com/bashonly)
+- **patreon**: [Fix extractors](https://github.com/yt-dlp/yt-dlp/commit/bf4dfffe0164385c29a2dcb0367110babe4d4f27) ([#16112](https://github.com/yt-dlp/yt-dlp/issues/16112)) by [bashonly](https://github.com/bashonly)
+- **thechosen**: [Rework extractor](https://github.com/yt-dlp/yt-dlp/commit/e3118604aa99a5514342d6a002c9b4a3fe1235b4) ([#16021](https://github.com/yt-dlp/yt-dlp/issues/16021)) by [0xvd](https://github.com/0xvd)
+- **youtube**
+    - [Force player `9f4cc5e4`](https://github.com/yt-dlp/yt-dlp/commit/d3165e83ffc0088eef5e594927ea9ac99a6e2ce6) ([#16123](https://github.com/yt-dlp/yt-dlp/issues/16123)) by [bashonly](https://github.com/bashonly)
+    - [Skip webpage player response by default](https://github.com/yt-dlp/yt-dlp/commit/2ecc4c3bc300701d85e2cbaeb2b28a921a68f0f0) ([#16126](https://github.com/yt-dlp/yt-dlp/issues/16126)) by [bashonly](https://github.com/bashonly)
+- **zapiks**: [Improve extraction](https://github.com/yt-dlp/yt-dlp/commit/6f796a2bff332f72c3f250207cdf10db852f6016) ([#16030](https://github.com/yt-dlp/yt-dlp/issues/16030)) by [doe1080](https://github.com/doe1080)
+
 ### 2026.02.21
 
 #### Important changes
