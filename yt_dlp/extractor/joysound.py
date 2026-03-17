@@ -2,13 +2,10 @@ import base64
 import re
 
 from .common import InfoExtractor
-from ..networking import HEADRequest
 from ..utils import (
     clean_html,
     encode_data_uri,
-    int_or_none,
     multipart_encode,
-    url_or_none,
     urlencode_postdata,
 )
 from ..utils.traversal import require, traverse_obj
@@ -19,34 +16,39 @@ class JoySoundCafeIE(InfoExtractor):
     IE_DESC = 'ジョイサウンドカフェ'
 
     _BASE_URL = 'https://www.sound-cafe.jp/player'
+    _GEO_BYPASS = False
+    _GEO_COUNTRIES = ['JP']
     _VALID_URL = r'https?://www\.sound-cafe\.jp/songdetail/(?P<id>\d+)'
     _TESTS = [{
         'url': 'https://www.sound-cafe.jp/songdetail/424782',
         'info_dict': {
             'id': '424782',
-            'ext': 'mp4',
+            'ext': 'ogg',
             'title': 'Sincerely',
             'artists': ['TRUE'],
             'composers': 'count:1',
         },
+        'params': {'skip_download': True},
     }, {
         'url': 'https://www.sound-cafe.jp/songdetail/612007',
         'info_dict': {
             'id': '612007',
-            'ext': 'mp4',
+            'ext': 'ogg',
             'title': 'Celestial',
             'artists': ['Ed Sheeran'],
             'composers': 'count:3',
         },
+        'params': {'skip_download': True},
     }, {
         'url': 'https://www.sound-cafe.jp/songdetail/177905',
         'info_dict': {
             'id': '177905',
-            'ext': 'mp4',
+            'ext': 'ogg',
             'title': '深愛',
             'artists': ['水樹奈々'],
             'composers': 'count:1',
         },
+        'params': {'skip_download': True},
     }]
 
     def _real_extract(self, url):
@@ -70,8 +72,8 @@ class JoySoundCafeIE(InfoExtractor):
         ):
             format_id = guide.group('id')
             data, content_type = multipart_encode({
-                'songNumber': song_number,
                 'serviceType': guide.group('value'),
+                'songNumber': song_number,
             })
             fme = self._download_json(
                 f'{self._BASE_URL}/getFME', audio_id, headers={
@@ -92,31 +94,6 @@ class JoySoundCafeIE(InfoExtractor):
                 'url': encode_data_uri(ogg_bytes, 'audio/ogg'),
                 'vcodec': 'none',
             })
-
-        data, content_type = multipart_encode({
-            'songNumber': song_number,
-            'serviceType': '003000761',
-        })
-        contents_info = self._download_json(
-            f'{self._BASE_URL}/contentsInfo', audio_id, headers={
-                'Accept': 'application/json',
-                'Content-Type': content_type,
-                'X-Csrf-Token': x_csrf_token,
-            }, data=data)
-        movie_url = traverse_obj(contents_info, ('movie', 'mov1', {url_or_none}))
-        urlh = self._request_webpage(
-            HEADRequest(movie_url), audio_id, 'Checking filesize', fatal=False)
-        filesize_approx = int_or_none(urlh.headers.get('Content-Length', None))
-
-        formats.append({
-            'acodec': 'none',
-            'filesize_approx': filesize_approx,
-            'format_id': 'movie',
-            'height': 360,
-            'url': movie_url,
-            'vcodec': 'h264',
-            'width': 640,
-        })
 
         return {
             'id': song_number,
