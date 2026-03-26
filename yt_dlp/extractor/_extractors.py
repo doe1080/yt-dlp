@@ -2126,12 +2126,6 @@ from .triller import (
     TrillerShortIE,
     TrillerUserIE,
 )
-from .trovo import (
-    TrovoChannelClipIE,
-    TrovoChannelVodIE,
-    TrovoIE,
-    TrovoVodIE,
-)
 from .trtcocuk import TrtCocukVideoIE
 from .trtworld import TrtWorldIE
 from .trueid import TrueIDIE
