@@ -5,8 +5,10 @@ from .common import InfoExtractor
 from ..networking.exceptions import HTTPError
 from ..utils import (
     ExtractorError,
+    clean_html,
     filter_dict,
     float_or_none,
+    int_or_none,
     join_nonempty,
     mimetype2ext,
     parse_iso8601,
@@ -34,9 +36,9 @@ class StreaksBaseIE(InfoExtractor):
         except ExtractorError as e:
             if isinstance(e.cause, HTTPError) and e.cause.status in (403, 404):
                 error = self._parse_json(e.cause.response.read().decode(), media_id, fatal=False)
-                message = traverse_obj(error, ('message', {str}))
-                code = traverse_obj(error, ('code', {str}))
-                error_id = traverse_obj(error, ('id', {int}))
+                message = traverse_obj(error, ('message', {clean_html}, filter))
+                code = traverse_obj(error, ('code', {clean_html}, filter))
+                error_id = traverse_obj(error, ('id', {int_or_none}))
                 if code == 'REQUEST_FAILED':
                     if error_id == 124:
                         self.raise_geo_restricted(countries=self._GEO_COUNTRIES)
@@ -59,7 +61,9 @@ class StreaksBaseIE(InfoExtractor):
         formats, subtitles = [], {}
         drm_formats = False
 
-        for source in traverse_obj(response, ('sources', lambda _, v: v['src'])):
+        for source in traverse_obj(response, (
+            'sources', lambda _, v: url_or_none(v['src']),
+        )):
             if source.get('key_systems'):
                 drm_formats = True
                 continue
@@ -107,11 +111,11 @@ class StreaksBaseIE(InfoExtractor):
             'subtitles': subtitles,
             'uploader_id': project_id,
             **traverse_obj(response, {
-                'title': ('name', {str}),
-                'description': ('description', {str}, filter),
+                'title': ('name', {clean_html}, filter),
+                'description': ('description', {clean_html}, filter),
                 'duration': ('duration', {float_or_none}),
                 'modified_timestamp': ('updated_at', {parse_iso8601}),
-                'tags': ('tags', ..., {str}),
+                'tags': ('tags', ..., {clean_html}, filter, all, filter),
                 'thumbnails': (('poster', 'thumbnail'), 'src', {'url': {url_or_none}}),
                 'timestamp': ('created_at', {parse_iso8601}),
             }),
@@ -131,7 +135,6 @@ class StreaksIE(StreaksBaseIE):
             'id': 'ba2c253508914d9ea061a5f26bc58b20',
             'ext': 'mp4',
             'title': 'tarun_suimin.mp4',
-            'display_id': 'ba2c253508914d9ea061a5f26bc58b20',
             'duration': 265.344,
             'live_status': 'not_live',
             'modified_date': '20230908',
@@ -158,20 +161,19 @@ class StreaksIE(StreaksBaseIE):
             'uploader_id': 'ktv-web',
         },
     }, {
-        # https://www.ktv.jp/news/articles/?id=24348
-        'url': 'https://playback.api.streaks.jp/v1/projects/ktv-news/medias/788fc689a8824063b55428804db7f4a4',
+        # https://www.ktv.jp/news/articles/?id=26089
+        'url': 'https://playback.api.streaks.jp/v1/projects/ktv-news/medias/2574a2542f7a461892b9a17457acd604',
         'info_dict': {
-            'id': '788fc689a8824063b55428804db7f4a4',
+            'id': '2574a2542f7a461892b9a17457acd604',
             'ext': 'mp4',
-            'title': '24348.mp4',
-            'display_id': '788fc689a8824063b55428804db7f4a4',
-            'duration': 50.257,
+            'title': '26089.mp4',
+            'duration': 51.752,
             'live_status': 'not_live',
-            'modified_date': '20260111',
-            'modified_timestamp': 1768122811,
+            'modified_date': '20260331',
+            'modified_timestamp': 1774999785,
             'thumbnail': r're:https?://.+\.jpg',
-            'timestamp': 1768122663,
-            'upload_date': '20260111',
+            'timestamp': 1774999564,
+            'upload_date': '20260331',
             'uploader_id': 'ktv-news',
         },
         'params': {'extractor_args': {'streaks': {'api_key': ['0ff2ccfb6381401582d6ee60e3cb66a1']}}},
