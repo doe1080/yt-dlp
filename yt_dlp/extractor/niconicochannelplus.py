@@ -22,6 +22,7 @@ class NiconicoChannelPlusIE(NiconicoChannelPlusBaseIE):
     IE_NAME = 'niconicochannelplus'
     IE_DESC = 'ニコニコチャンネルプラス'
 
+    # https://www.sheeta-info.com/usecase
     _DOMAINS = {
         '2': 'nfc-site01.com',
         '7': 'nfc-site02.com',
@@ -92,6 +93,8 @@ class NiconicoChannelPlusIE(NiconicoChannelPlusBaseIE):
         '802': 'sheeta-demo2.com',
         '803': 'sheeta-demo3.com',
         '834': 'fudanjuku-plus.com',
+        '933': 'stardust-web.com',
+        '977': 'earth-jets-fc.com',
         '982': 'harananoka.com',
     }
     _PARENT_DOMAINS = {
@@ -100,6 +103,7 @@ class NiconicoChannelPlusIE(NiconicoChannelPlusBaseIE):
         '353': 'audee-membership.jp',
         '812': 'bayfm-channel.jp',
         '869': 'sheeta.jp',
+        '969': 'sapocia.com',
     }
     _DOMAIN_RE = '|'.join(map(re.escape, {
         *_DOMAINS.values(),
