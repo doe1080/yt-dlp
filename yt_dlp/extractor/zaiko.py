@@ -58,7 +58,7 @@ class ZaikoIE(ZaikoBaseIE):
             'live_status': 'was_live',
             'release_date': '20250106',
             'release_timestamp': 1736132400,
-            'thumbnail': r're:https?:/.+',
+            'thumbnail': r're:https?://.+',
             'uploader': 'ZCS_Ops',
             'uploader_id': 'cs-strmngopstest',
         },
@@ -74,7 +74,7 @@ class ZaikoIE(ZaikoBaseIE):
             'live_status': 'was_live',
             'release_date': '20260330',
             'release_timestamp': 1774866600,
-            'thumbnail': r're:https?:/.+',
+            'thumbnail': r're:https?://.+',
             'uploader': 'ボイスガレッジチャンネル',
             'uploader_id': 'voicegarage',
         },
@@ -180,7 +180,7 @@ class ZaikoETicketIE(ZaikoBaseIE):
         'info_dict': {
             'id': 'f30346ca31-20230607121325-505b9e63',
             'title': 'ZAIKO STREAMING TEST',
-            'thumbnail': r're:https?:/.+',
+            'thumbnail': r're:https?://.+',
         },
         'skip': 'Ticket holders only',
     }]
