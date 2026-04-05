@@ -27,14 +27,13 @@ class ZaikoBaseIE(InfoExtractor):
 
     def _parse_vue_element_attr(self, name, string, video_id):
         page_elem = self._search_regex(
-            rf'(<{name}\b(?:[^>"\']|"[^"]*"|\'[^\']*\')*>)', string, name)
+            rf'(<{name}\b(?:[^>"\']+|"[^"]*"|\'[^\']*\')+>)', string, name)
 
         attrs = {}
         for key, value in extract_attributes(page_elem).items():
             if key.startswith(':'):
                 with contextlib.suppress(ValueError):
-                    attrs[key] = json.loads(value)
-                    continue
+                    value = json.loads(value)
             attrs[key] = value
         return attrs
 
@@ -86,8 +85,8 @@ class ZaikoIE(ZaikoBaseIE):
     def _real_extract(self, url):
         video_id = self._match_id(url)
         webpage = self._download_real_webpage(url, video_id)
-        stream_meta = self._parse_vue_element_attr('stream-page', webpage, video_id)
 
+        stream_meta = self._parse_vue_element_attr('stream-page', webpage, video_id)
         video_source = traverse_obj(stream_meta, (
             ':stream-access', 'video_source', {url_or_none}))
         player_page = self._download_webpage(
@@ -95,20 +94,38 @@ class ZaikoIE(ZaikoBaseIE):
 
         player_meta = self._parse_vue_element_attr('player', player_page, video_id)
         initial_info = traverse_obj(player_meta, (':initial_event_info', {dict})) or {}
-
         status = traverse_obj(initial_info, ('status', {str}))
-        live_status, msg, expected = {
-            'vod': ('was_live', 'No VOD URL was found', False),
-            'archiving': ('post_live', 'VOD is still being processed', True),
-            'deleting': ('post_live', 'Event has ended', True),
-            'deleted': ('post_live', 'Event has ended', True),
-            'error': ('post_live', 'Event has ended', True),
-            'disconnected': ('post_live', 'Stream has been disconnected', True),
-            'live_to_disconnected': ('post_live', 'Stream has been disconnected', True),
-            'live': ('is_live', 'No livestream URL was found', False),
-            'waiting': ('is_upcoming', 'Event has not started yet', True),
-            'cancelled': ('not_live', 'Event has been cancelled', True),
-        }.get(status) or ('not_live', f'Unknown event status "{status}"', False)
+        live_status = {
+            'live': 'is_live',
+            'vod': 'was_live',
+            'waiting': 'is_upcoming',
+        }.get(status)
+
+        scheduled_time = traverse_obj(stream_meta, (':stream', 'start', 'iso', {str}))
+        release_timestamp = parse_iso8601(scheduled_time)
+        if live_status == 'is_upcoming':
+            self.raise_no_formats(
+                f'This livestream is scheduled to start at {scheduled_time}', expected=True)
+
+            return {
+                'id': video_id,
+                'live_status': live_status,
+                'release_timestamp': release_timestamp,
+            }
+
+        if live_status not in ('is_live', 'was_live'):
+            err_msg = {
+                'archiving': 'VOD is still being processed',
+                'cancelled': 'Event has been cancelled',
+                'deleted': 'Event has ended',
+                'deleting': 'Event has ended',
+                'disconnected': 'Stream has been disconnected',
+                'error': 'Event has ended',
+                'live_to_disconnected': 'Stream has been disconnected',
+            }.get(status)
+
+            raise ExtractorError(
+                err_msg or f'Unknown status: {status}', expected=err_msg is not None)
 
         if is_jwt_protected := traverse_obj(initial_info, (
             'is_jwt_protected', {bool},
@@ -121,15 +138,14 @@ class ZaikoIE(ZaikoBaseIE):
             m3u8_url = traverse_obj(initial_info, (
                 'endpoint', {url_or_none}, {require('m3u8 URL')}))
 
-        formats = self._extract_m3u8_formats(m3u8_url, video_id, fatal=False)
-        if not formats:
-            self.raise_no_formats(msg, expected=expected)
+        formats = self._extract_m3u8_formats(m3u8_url, video_id, 'mp4')
         if is_jwt_protected:
             for fmt in formats:
                 fmt['protocol'] = 'zaiko'
 
         return {
             'id': video_id,
+            'display_id': traverse_obj(stream_meta, (':stream', 'id', {str_or_none})),
             'downloader_options': {
                 'referer': video_source,
                 **traverse_obj(player_meta, {
@@ -140,6 +156,7 @@ class ZaikoIE(ZaikoBaseIE):
             'formats': formats,
             'http_headers': self._HEADERS,
             'live_status': live_status,
+            'release_timestamp': release_timestamp,
             **traverse_obj(initial_info, {
                 'alt_title': ('title', {clean_html}, filter),
                 'thumbnail': ('poster_url', {url_or_none}),
@@ -151,10 +168,6 @@ class ZaikoIE(ZaikoBaseIE):
             **traverse_obj(stream_meta, (':profile', {
                 'uploader': ('name', {clean_html}, filter),
                 'uploader_id': ('whitelabel', {str}),
-            })),
-            **traverse_obj(stream_meta, (':stream', {
-                'display_id': ('id', {str_or_none}),
-                'release_timestamp': ('start', 'iso', {parse_iso8601}),
             })),
         }
 
