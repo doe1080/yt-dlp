@@ -25,7 +25,7 @@ from .exceptions import (
 )
 from .impersonate import ImpersonateRequestHandler, ImpersonateTarget
 from ..dependencies import curl_cffi, certifi
-from ..utils import int_or_none
+from ..utils import int_or_none, version_tuple
 
 if curl_cffi is None:
     raise ImportError('curl_cffi is not installed')
@@ -33,9 +33,9 @@ if curl_cffi is None:
 
 curl_cffi_version = tuple(map(int, re.split(r'[^\d]+', curl_cffi.__version__)[:3]))
 
-if curl_cffi_version != (0, 5, 10) and not (0, 10) <= curl_cffi_version < (0, 14):
+if curl_cffi_version != (0, 5, 10) and not (0, 10) <= curl_cffi_version < (0, 16):
     curl_cffi._yt_dlp__version = f'{curl_cffi.__version__} (unsupported)'
-    raise ImportError('Only curl_cffi versions 0.5.10, 0.10.x, 0.11.x, 0.12.x, 0.13.x are supported')
+    raise ImportError('Only curl_cffi versions 0.5.10 and 0.10.x through 0.15.x are supported')
 
 import curl_cffi.requests
 from curl_cffi.const import CurlECode, CurlOpt
@@ -162,6 +162,18 @@ BROWSER_TARGETS: dict[tuple[int, ...], dict[str, ImpersonateTarget]] = {
         'safari260': ImpersonateTarget('safari', '26.0', 'macos', '26'),
         'safari260_ios': ImpersonateTarget('safari', '26.0', 'ios', '26.0'),
     },
+    (0, 14): {
+        'chrome142': ImpersonateTarget('chrome', '142', 'macos', '26'),
+        'safari2601': ImpersonateTarget('safari', '26.0.1', 'macos', '26'),
+    },
+    (0, 15): {
+        'chrome145': ImpersonateTarget('chrome', '145', 'macos', '26'),
+        'chrome146': ImpersonateTarget('chrome', '146', 'macos', '26'),
+        # firefox144 was added in 0.14.0, but its UA had a typo in 0.14.0
+        # Ref: https://github.com/lexiforest/curl-impersonate/issues/234
+        'firefox144': ImpersonateTarget('firefox', '144', 'macos', '26'),
+        'firefox147': ImpersonateTarget('firefox', '147', 'macos', '26'),
+    },
 }
 
 # Needed for curl_cffi < 0.11
@@ -173,6 +185,13 @@ _TARGETS_COMPAT_LOOKUP = {
     'safari172_ios': 'safari17_2_ios',
     'safari180': 'safari18_0',
     'safari180_ios': 'safari18_0_ios',
+}
+
+# These targets are known to be insufficient, unreliable or blocked
+# See: https://github.com/yt-dlp/yt-dlp/issues/16012
+_DEPRIORITIZED_TARGETS = {
+    ImpersonateTarget('chrome', '133', 'macos', '15'),  # chrome133a
+    ImpersonateTarget('chrome', '136', 'macos', '15'),  # chrome136
 }
 
 
@@ -192,12 +211,14 @@ class CurlCFFIRH(ImpersonateRequestHandler, InstanceStoreMixin):
             for version, targets in BROWSER_TARGETS.items()
             if curl_cffi_version >= version
         ), key=lambda x: (
+            # deprioritize unreliable targets so they are not selected by default
+            x[1] not in _DEPRIORITIZED_TARGETS,
             # deprioritize mobile targets since they give very different behavior
             x[1].os not in ('ios', 'android'),
             # prioritize tor < edge < firefox < safari < chrome
             ('tor', 'edge', 'firefox', 'safari', 'chrome').index(x[1].client),
             # prioritize newest version
-            float(x[1].version) if x[1].version else 0,
+            version_tuple(x[1].version or '0'),
             # group by os name
             x[1].os,
         ), reverse=True)).items()
