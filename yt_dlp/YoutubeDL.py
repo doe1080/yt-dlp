@@ -199,19 +199,18 @@ def _catch_unsafe_extension_error(func):
 class YoutubeDL:
     """YoutubeDL class.
 
-    YoutubeDL objects are the ones responsible of downloading the
-    actual video file and writing it to disk if the user has requested
-    it, among some other tasks. In most cases there should be one per
-    program. As, given a video URL, the downloader doesn't know how to
-    extract all the needed information, task that InfoExtractors do, it
-    has to pass the URL to one of them.
+    YoutubeDL objects are responsible for downloading the actual video file
+    and writing it to disk if the user has requested it, among some other tasks.
+    In most cases there should be one per program. Since the downloader doesn't
+    know how to extract all the needed information from a given video URL, it
+    has to pass the URL to one of the InfoExtractors.
 
     For this, YoutubeDL objects have a method that allows
-    InfoExtractors to be registered in a given order. When it is passed
-    a URL, the YoutubeDL object handles it to the first InfoExtractor it
+    InfoExtractors to be registered in a given order. When passed a URL,
+    the YoutubeDL object passes it to the first InfoExtractor it
     finds that reports being able to handle it. The InfoExtractor extracts
     all the information about the video or videos the URL refers to, and
-    YoutubeDL process the extracted information, possibly using a File
+    YoutubeDL processes the extracted information, possibly using a File
     Downloader to download the video.
 
     YoutubeDL objects accept a lot of parameters. In order not to saturate
@@ -248,17 +247,17 @@ class YoutubeDL:
                        of 'skip_download' or 'simulate'.
     simulate:          Do not download the video files. If unset (or None),
                        simulate only if listsubtitles, listformats or list_thumbnails is used
-    format:            Video format code. see "FORMAT SELECTION" for more details.
+    format:            Video format code. See "FORMAT SELECTION" for more details.
                        You can also pass a function. The function takes 'ctx' as
                        argument and returns the formats to download.
                        See "build_format_selector" for an implementation
     allow_unplayable_formats:   Allow unplayable formats to be extracted and downloaded.
-    ignore_no_formats_error: Ignore "No video formats" error. Usefull for
+    ignore_no_formats_error: Ignore "No video formats" error. Useful for
                        extracting metadata even if the video is not actually
                        available for download (experimental)
     format_sort:       A list of fields by which to sort the video formats.
                        See "Sorting Formats" for more details.
-    format_sort_force: Force the given format_sort. see "Sorting Formats"
+    format_sort_force: Force the given format_sort. See "Sorting Formats"
                        for more details.
     prefer_free_formats: Whether to prefer video formats with free containers
                        over non-free ones of the same quality.
@@ -266,12 +265,12 @@ class YoutubeDL:
                        into a single file
     allow_multiple_audio_streams:   Allow multiple audio streams to be merged
                        into a single file
-    check_formats      Whether to test if the formats are downloadable.
+    check_formats:     Whether to test if the formats are downloadable.
                        Can be True (check all), False (check none),
                        'selected' (check selected formats),
                        or None (check only if requested by extractor)
-    paths:             Dictionary of output paths. The allowed keys are 'home'
-                       'temp' and the keys of OUTTMPL_TYPES (in utils/_utils.py)
+    paths:             Dictionary of output paths. The allowed keys are 'home',
+                       'temp', and the keys of OUTTMPL_TYPES (in utils/_utils.py)
     outtmpl:           Dictionary of templates for output names. Allowed keys
                        are 'default' and the keys of OUTTMPL_TYPES (in utils/_utils.py).
                        For compatibility with youtube-dl, a single string can also be used
@@ -367,9 +366,9 @@ class YoutubeDL:
                        on geo-restricted sites.
     socket_timeout:    Time to wait for unresponsive hosts, in seconds
     bidi_workaround:   Work around buggy terminals without bidirectional text
-                       support, using fridibi
-    debug_printtraffic:Print out sent and received HTTP traffic
-    default_search:    Prepend this string if an input url is not valid.
+                       support, using fribidi
+    debug_printtraffic:  Print out sent and received HTTP traffic
+    default_search:    Prepend this string if an input URL is not valid.
                        'auto' for elaborate guessing
     encoding:          Use this encoding instead of the system-specified.
     extract_flat:      Whether to resolve and process url_results further
@@ -421,7 +420,7 @@ class YoutubeDL:
                        * postprocessor: Name of the postprocessor
                        * info_dict: The extracted info_dict
 
-                       Progress hooks are guaranteed to be called at least twice
+                       Postprocessor hooks are guaranteed to be called at least twice
                        (with status "started" and "finished") if the processing is successful.
     merge_output_format: "/" separated list of extensions to use when merging formats.
     final_ext:         Expected final extension; used to detect when the file was
@@ -442,7 +441,7 @@ class YoutubeDL:
                        sleep before each download (minimum possible number
                        of seconds to sleep) when used along with
                        max_sleep_interval.
-    max_sleep_interval:Upper bound of a range for randomized sleep before each
+    max_sleep_interval:  Upper bound of a range for randomized sleep before each
                        download (maximum possible number of seconds to sleep).
                        Must only be used along with sleep_interval.
                        Actual sleep time will be a random float from range
@@ -461,7 +460,7 @@ class YoutubeDL:
                        - Raise utils.DownloadCancelled(msg) to abort remaining
                          downloads when a video is rejected.
                        match_filter_func in utils/_utils.py is one example for this.
-    color:             A Dictionary with output stream names as keys
+    color:             A dictionary with output stream names as keys
                        and their respective color policy as values.
                        Can also just be a single color policy,
                        in which case it applies to all outputs.
@@ -487,13 +486,13 @@ class YoutubeDL:
                        format-sort, no-clean-infojson, no-playlist-metafiles,
                        no-keep-subs, no-attach-info-json, allow-unsafe-ext, prefer-vp9-sort,
                        mtime-by-default.
-                       Refer __init__.py for their implementation
+                       Refer to __init__.py for their implementation
     progress_template: Dictionary of templates for progress outputs.
                        Allowed keys are 'download', 'postprocess',
                        'download-title' (console title) and 'postprocess-title'.
                        The template is mapped on a dictionary with keys 'progress' and 'info'
-    retry_sleep_functions: Dictionary of functions that takes the number of attempts
-                       as argument and returns the time to sleep in seconds.
+    retry_sleep_functions: Dictionary of functions that take the number of attempts
+                       as an argument and return the time to sleep in seconds.
                        Allowed keys are 'http', 'fragment', 'file_access', 'extractor'
     download_ranges:   A callback function that gets called for every video with
                        the signature (info_dict, ydl) -> Iterable[Section].
@@ -505,7 +504,7 @@ class YoutubeDL:
                        * index: Section number (Optional)
     force_keyframes_at_cuts: Re-encode the video when downloading ranges to get precise cuts
     noprogress:        Do not print the progress bar
-    live_from_start:   Whether to download livestreams videos from the start
+    live_from_start:   Whether to download livestream videos from the start
     warn_when_outdated: Emit a warning if the yt-dlp version is older than 90 days
 
     The following parameters are not used by YoutubeDL itself, they are used by
@@ -522,7 +521,7 @@ class YoutubeDL:
                        and a list of additional command-line arguments for the
                        postprocessor/executable. The dict can also have "PP+EXE" keys
                        which are used when the given exe is used by the given PP.
-                       Use 'default' as the name for arguments to passed to all PP
+                       Use 'default' as the name for arguments to be passed to all PP
                        For compatibility with youtube-dl, a single list of args
                        can also be used
 
@@ -541,7 +540,7 @@ class YoutubeDL:
                        If None, the default runtime of "deno" will be enabled.
                        The runtime configuration dictionary can have the following keys:
                         - path: Path to the executable (optional)
-                       E.g. {'deno': {'path': '/path/to/deno'}
+                       E.g. {'deno': {'path': '/path/to/deno'}}
     remote_components: A list of remote components that are allowed to be fetched when required.
                        Supported components:
                        - ejs:npm (external JavaScript components from npm)
@@ -627,7 +626,7 @@ class YoutubeDL:
     }
 
     def __init__(self, params=None, auto_init=True):
-        """Create a FileDownloader object with the given options.
+        """Create a YoutubeDL object with the given options.
         @param auto_init    Whether to load the default extractors and print header (if verbose).
                             Set to 'no_verbose_header' to not print the header
         """
@@ -651,7 +650,7 @@ class YoutubeDL:
         self.cache = Cache(self)
         self.__header_cookies = []
 
-        # compat for API: load plugins if they have not already
+        # compat for API: load plugins if they have not already been loaded
         if not all_plugins_loaded.value:
             load_all_plugins()
 
@@ -1067,7 +1066,7 @@ class YoutubeDL:
         not when errors are found, after printing the message.
 
         @param tb          If given, is additional traceback information
-        @param is_error    Whether to raise error according to ignorerrors
+        @param is_error    Whether to raise error according to ignoreerrors
         """
         if message is not None:
             self.to_stderr(message)
@@ -1214,9 +1213,9 @@ class YoutubeDL:
     @staticmethod
     def _outtmpl_expandpath(outtmpl):
         # expand_path translates '%%' into '%' and '$$' into '$'
-        # correspondingly that is not what we want since we need to keep
+        # but that is not what we want since we need to keep
         # '%%' intact for template dict substitution step. Working around
-        # with boundary-alike separator hack.
+        # with boundary-like separator hack.
         sep = ''.join(random.choices(string.ascii_letters, k=32))
         outtmpl = outtmpl.replace('%%', f'%{sep}%').replace('$$', f'${sep}$')
 
@@ -1533,7 +1532,7 @@ class YoutubeDL:
             if not self.params.get('paths'):
                 pass
             elif filename == '-':
-                self.report_warning('--paths is ignored when an outputting to stdout', only_once=True)
+                self.report_warning('--paths is ignored when outputting to stdout', only_once=True)
             elif os.path.isabs(filename):
                 self.report_warning('--paths is ignored since an absolute path is given in output template', only_once=True)
         if filename == '-' or not filename:
@@ -1710,7 +1709,7 @@ class YoutubeDL:
                     if e.countries:
                         msg += '\nThis video is available in {}.'.format(', '.join(
                             map(ISO3166Utils.short2full, e.countries)))
-                    msg += '\nYou might want to use a VPN or a proxy server (with --proxy) to workaround.'
+                    msg += '\nYou might want to use a VPN or a proxy server (with --proxy) to work around it.'
                     self.report_error(msg)
                 except ExtractorError as e:  # An error we somewhat expected
                     self.report_error(str(e), e.format_traceback())
@@ -1797,7 +1796,7 @@ class YoutubeDL:
             elif autoscope is True:
                 self.deprecated_feature(
                     'Passing cookies as a header is a potential security risk; '
-                    'they will be scoped to the domain of the downloaded urls. '
+                    'they will be scoped to the domain of the downloaded URLs. '
                     'Please consider loading cookies from a file or browser instead.')
                 self.__header_cookies.append(prepared_cookie)
             elif autoscope:
@@ -1811,7 +1810,7 @@ class YoutubeDL:
                                   tb=False, is_error=False)
 
     def _apply_header_cookies(self, url, cookies=None):
-        """Applies stray header cookies to the provided url
+        """Applies stray header cookies to the provided URL
 
         This loads header cookies and scopes them to the domain provided in `url`.
         While this is not ideal, it helps reduce the risk of them being sent
@@ -1875,7 +1874,7 @@ class YoutubeDL:
 
     def process_ie_result(self, ie_result, download=True, extra_info=None):
         """
-        Take the result of the ie(may be modified) and resolve all unresolved
+        Take the result of the IE (which may be modified) and resolve all unresolved
         references (URLs, playlist items).
 
         It will also download the videos if 'download'.
@@ -1955,10 +1954,10 @@ class YoutubeDL:
             new_result.update(filter_dict(ie_result, lambda k, v: v is not None and k not in exempted_fields))
 
             # Extracted info may not be a video result (i.e.
-            # info.get('_type', 'video') != video) but rather an url or
-            # url_transparent. In such cases outer metadata (from ie_result)
+            # info.get('_type', 'video') != video) but rather an `url` or
+            # `url_transparent`. In such cases outer metadata (from ie_result)
             # should be propagated to inner one (info). For this to happen
-            # _type of info should be overridden with url_transparent. This
+            # _type of info should be overridden with `url_transparent`. This
             # fixes issue from https://github.com/ytdl-org/youtube-dl/pull/11163.
             if new_result.get('_type') == 'url':
                 new_result['_type'] = 'url_transparent'
@@ -2551,7 +2550,7 @@ class YoutubeDL:
                         yield merged_format
 
                 else:
-                    format_fallback, seperate_fallback, format_reverse, format_idx = False, None, True, 1
+                    format_fallback, separate_fallback, format_reverse, format_idx = False, None, True, 1
                     mobj = re.match(
                         r'(?P<bw>best|worst|b|w)(?P<type>video|audio|v|a)?(?P<mod>\*)?(?:\.(?P<n>[1-9]\d*))?$',
                         format_spec)
@@ -2578,7 +2577,7 @@ class YoutubeDL:
                             filter_f = lambda f: f.get('ext') == format_spec and f.get('acodec') != 'none'
                         elif format_spec in self._format_selection_exts['video']:
                             filter_f = lambda f: f.get('ext') == format_spec and f.get('acodec') != 'none' and f.get('vcodec') != 'none'
-                            seperate_fallback = lambda f: f.get('ext') == format_spec and f.get('vcodec') != 'none'
+                            separate_fallback = lambda f: f.get('ext') == format_spec and f.get('vcodec') != 'none'
                         elif format_spec in self._format_selection_exts['storyboards']:
                             filter_f = lambda f: f.get('ext') == format_spec and f.get('acodec') == 'none' and f.get('vcodec') == 'none'
                         else:
@@ -2593,9 +2592,9 @@ class YoutubeDL:
                                 # or video only (imgur)) best/worst will fallback to
                                 # best/worst {video,audio}-only format
                                 matches = list(filter(lambda f: f.get('vcodec') != 'none' or f.get('acodec') != 'none', formats))
-                            elif seperate_fallback and not ctx['has_merged_format']:
+                            elif separate_fallback and not ctx['has_merged_format']:
                                 # for compatibility with youtube-dl when there is no pre-merged format
-                                matches = list(filter(seperate_fallback, formats))
+                                matches = list(filter(separate_fallback, formats))
                         matches = LazyList(_check_formats(matches[::-1 if format_reverse else 1]))
                         try:
                             yield matches[format_idx - 1]

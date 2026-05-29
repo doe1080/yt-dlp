@@ -1123,7 +1123,7 @@ def create_parser():
         dest='hls_use_mpegts', action='store_false',
         help=(
             'Do not use the mpegts container for HLS videos. '
-            'This is default when not downloading live streams'))
+            'This is the default when not downloading live streams'))
     downloader.add_option(
         '--download-sections',
         metavar='REGEX', dest='download_ranges', action='append',
@@ -1143,7 +1143,7 @@ def create_parser():
             'process': str.strip,
         }, help=(
             'Name or path of the external downloader to use (optionally) prefixed by '
-            'the protocols (http, ftp, m3u8, dash, rstp, rtmp, mms) to use it for. '
+            'the protocols (http, ftp, m3u8, dash, rtsp, rtmp, mms) to use it for. '
             f'Currently supports native, {", ".join(sorted(list_external_downloaders()))}. '
             'You can use this option multiple times to set different downloaders for different protocols. '
             'E.g. --downloader aria2c --downloader "dash,m3u8:native" will use '
@@ -1260,14 +1260,14 @@ def create_parser():
         metavar='[WHEN:]TEMPLATE', dest='forceprint', **when_prefix('video'),
         help=(
             'Field name or output template to print to screen, optionally prefixed with when to print it, separated by a ":". '
-            'Supported values of "WHEN" are the same as that of --use-postprocessor (default: video). '
+            'Supported values of "WHEN" are the same as those of --use-postprocessor (default: video). '
             'Implies --quiet. Implies --simulate unless --no-simulate or later stages of WHEN are used. '
             'This option can be used multiple times'))
     verbosity.add_option(
         '--print-to-file',
         metavar='[WHEN:]TEMPLATE FILE', dest='print_to_file', nargs=2, **when_prefix('video'),
         help=(
-            'Append given template to the file. The values of WHEN and TEMPLATE are the same as that of --print. '
+            'Append given template to the file. The values of WHEN and TEMPLATE are the same as those of --print. '
             'FILE uses the same syntax as the output template. This option can be used multiple times'))
     verbosity.add_option(
         '-g', '--get-url',
@@ -1321,7 +1321,7 @@ def create_parser():
         '--force-write-archive', '--force-write-download-archive', '--force-download-archive',
         action='store_true', dest='force_write_download_archive', default=False,
         help=(
-            'Force download archive entries to be written as far as no errors occur, '
+            'Force download archive entries to be written as long as no errors occur, '
             'even if -s or another simulation option is used (Alias: --force-download-archive)'))
     verbosity.add_option(
         '--newline',
@@ -1729,13 +1729,13 @@ def create_parser():
         metavar='[WHEN:]FROM:TO', dest='parse_metadata', **when_prefix('pre_process'),
         help=(
             'Parse additional metadata like title/artist from other fields; see "MODIFYING METADATA" for details. '
-            'Supported values of "WHEN" are the same as that of --use-postprocessor (default: pre_process)'))
+            'Supported values of "WHEN" are the same as those of --use-postprocessor (default: pre_process)'))
     postproc.add_option(
         '--replace-in-metadata',
         dest='parse_metadata', metavar='[WHEN:]FIELDS REGEX REPLACE', nargs=3, **when_prefix('pre_process'),
         help=(
             'Replace text in a metadata field using the given regex. This option can be used multiple times. '
-            'Supported values of "WHEN" are the same as that of --use-postprocessor (default: pre_process)'))
+            'Supported values of "WHEN" are the same as those of --use-postprocessor (default: pre_process)'))
     postproc.add_option(
         '--xattrs', '--xattr',
         action='store_true', dest='xattrs', default=False,
@@ -1768,7 +1768,7 @@ def create_parser():
         metavar='[WHEN:]CMD', dest='exec_cmd', **when_prefix('after_move'),
         help=(
             'Execute a command, optionally prefixed with when to execute it, separated by a ":". '
-            'Supported values of "WHEN" are the same as that of --use-postprocessor (default: after_move). '
+            'Supported values of "WHEN" are the same as those of --use-postprocessor (default: after_move). '
             'The same syntax as the output template can be used to pass any field as arguments to the command. '
             'If no fields are passed, %(filepath,_filename|)q is appended to the end of the command. '
             'This option can be used multiple times'))

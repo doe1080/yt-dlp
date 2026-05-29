@@ -797,7 +797,7 @@ class JSInterpreter:
 
                 if member == 'split':
                     assertion(argvals, 'takes one or more arguments')
-                    assertion(len(argvals) == 1, 'with limit argument is not implemented')
+                    assertion(len(argvals) == 1, 'with a limit argument is not implemented')
                     return obj.split(argvals[0]) if argvals[0] else list(obj)
                 elif member == 'join':
                     assertion(isinstance(obj, list), 'must be applied on a list')
@@ -842,12 +842,12 @@ class JSInterpreter:
                     return obj
                 elif member == 'forEach':
                     assertion(argvals, 'takes one or more arguments')
-                    assertion(len(argvals) <= 2, 'takes at-most 2 arguments')
+                    assertion(len(argvals) <= 2, 'takes at most 2 arguments')
                     f, this = ([*argvals, ''])[:2]
                     return [f((item, idx, obj), {'this': this}, allow_recursion) for idx, item in enumerate(obj)]
                 elif member == 'indexOf':
                     assertion(argvals, 'takes one or more arguments')
-                    assertion(len(argvals) <= 2, 'takes at-most 2 arguments')
+                    assertion(len(argvals) <= 2, 'takes at most 2 arguments')
                     idx, start = ([*argvals, 0])[:2]
                     try:
                         return obj.index(idx, start)

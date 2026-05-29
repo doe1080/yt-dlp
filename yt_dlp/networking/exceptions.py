@@ -92,7 +92,7 @@ class SSLError(TransportError):
 
 
 class CertificateVerifyError(SSLError):
-    """Raised when certificate validated has failed"""
+    """Raised when certificate verification has failed"""
     pass
 
 

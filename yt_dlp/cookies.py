@@ -403,7 +403,7 @@ class ChromeCookieDecryptor:
                 - also attempts empty password if decryption fails
             - v11: AES-CBC encrypted with an OS protected key (keyring)
                 - also attempts empty password if decryption fails
-            - v11 keys can be stored in various places depending on the activate desktop environment [2]
+            - v11 keys can be stored in various places depending on the active desktop environment [2]
 
         Mac:
         - cookies are either v10 or not v10
@@ -424,7 +424,7 @@ class ChromeCookieDecryptor:
     _cookie_counts = {}
 
     def decrypt(self, encrypted_value):
-        raise NotImplementedError('Must be implemented by sub classes')
+        raise NotImplementedError('Must be implemented by subclasses')
 
 
 def get_cookie_decryptor(browser_root, browser_keyring_name, logger, *, keyring=None, meta_version=None):
@@ -724,7 +724,7 @@ def parse_safari_cookies(data, jar=None, logger=YDLLogger()):
     """
     References:
         - https://github.com/libyal/dtformats/blob/main/documentation/Safari%20Cookies.asciidoc
-            - this data appears to be out of date but the important parts of the database structure is the same
+            - this data appears to be out of date but the important parts of the database structure are the same
             - there are a few bytes here and there which are skipped during parsing
     """
     if jar is None:
@@ -917,7 +917,7 @@ def _get_kwallet_password(browser_keyring_name, keyring, logger):
 
     if shutil.which('kwallet-query') is None:
         logger.error('kwallet-query command not found. KWallet and kwallet-query '
-                     'must be installed to read from KWallet. kwallet-query should be'
+                     'must be installed to read from KWallet. kwallet-query should be '
                      'included in the kwallet package for your distribution')
         return b''
 
@@ -1389,7 +1389,7 @@ class YoutubeDLCookieJar(http.cookiejar.MozillaCookieJar):
         self._really_load(cf, filename, ignore_discard, ignore_expires)
         # Session cookies are denoted by either `expires` field set to
         # an empty string or 0. MozillaCookieJar only recognizes the former
-        # (see [1]). So we need force the latter to be recognized as session
+        # (see [1]). So we need to force the latter to be recognized as session
         # cookies on our own.
         # Session cookies may be important for cookies-based authentication,
         # e.g. usually, when user does not check 'Remember me' check box while

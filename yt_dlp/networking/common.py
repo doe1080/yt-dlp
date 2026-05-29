@@ -51,7 +51,7 @@ def register_preference(*handlers: type[RequestHandler]):
 class RequestDirector:
     """RequestDirector class
 
-    Helper class that, when given a request, forward it to a RequestHandler that supports it.
+    Helper class that, when given a request, forwards it to a RequestHandler that supports it.
 
     Preference functions in the form of func(handler, request) -> int
     can be registered into the `preferences` set. These are used to sort handlers
@@ -150,7 +150,7 @@ class RequestHandler(abc.ABC):
 
     """Request Handler class
 
-    Request handlers are class that, given a Request,
+    Request handlers are classes that, given a Request,
     process the request from start to finish and return a Response.
 
     Concrete subclasses need to redefine the _send(request) method,
@@ -168,11 +168,11 @@ class RequestHandler(abc.ABC):
     should be raised with a reason.
 
     By default, some checks are done on the request in _validate() based on the following class variables:
-    - `_SUPPORTED_URL_SCHEMES`: a tuple of supported url schemes.
-        Any Request with an url scheme not in this list will raise an UnsupportedRequest.
+    - `_SUPPORTED_URL_SCHEMES`: a tuple of supported URL schemes.
+        Any Request with a URL scheme not in this list will raise an UnsupportedRequest.
 
-    - `_SUPPORTED_PROXY_SCHEMES`: a tuple of support proxy url schemes. Any Request that contains
-        a proxy url with an url scheme not in this list will raise an UnsupportedRequest.
+    - `_SUPPORTED_PROXY_SCHEMES`: a tuple of supported proxy URL schemes. Any Request that contains
+        a proxy URL with a URL scheme not in this list will raise an UnsupportedRequest.
 
     - `_SUPPORTED_FEATURES`: a tuple of supported features, as defined in Features enum.
 
@@ -211,7 +211,7 @@ class RequestHandler(abc.ABC):
 
     Apart from the url protocol, proxies dict may contain the following keys:
     - `all`: proxy to use for all protocols. Used as a fallback if no proxy is set for a specific protocol.
-    - `no`: comma seperated list of hostnames (optionally with port) to not use a proxy for.
+    - `no`: comma-separated list of hostnames (optionally with port) to not use a proxy for.
     Note: a RequestHandler may not support these, as defined in `_SUPPORTED_FEATURES`.
 
     """
@@ -452,7 +452,7 @@ class Request:
 
     @data.setter
     def data(self, data: RequestData):
-        # Try catch some common mistakes
+        # Try to catch some common mistakes
         if data is not None and (
             not isinstance(data, (bytes, io.IOBase, Iterable)) or isinstance(data, (str, Mapping))
         ):
@@ -479,7 +479,7 @@ class Request:
 
     @headers.setter
     def headers(self, new_headers: Mapping):
-        """Replaces headers of the request. If not a HTTPHeaderDict, it will be converted to one."""
+        """Replaces headers of the request. If not an HTTPHeaderDict, it will be converted to one."""
         if isinstance(new_headers, HTTPHeaderDict):
             self._headers = new_headers
         elif isinstance(new_headers, Mapping):
@@ -568,7 +568,7 @@ class Response(io.IOBase):
 
     def get_header(self, name, default=None):
         """Get header for name.
-        If there are multiple matching headers, return all seperated by comma."""
+        If there are multiple matching headers, return all separated by commas."""
         headers = self.headers.get_all(name)
         if not headers:
             return default
@@ -578,7 +578,7 @@ class Response(io.IOBase):
             return headers[0]
         return ', '.join(headers)
 
-    # The following methods are for compatability reasons and are deprecated
+    # The following methods are for compatibility reasons and are deprecated
     @property
     def code(self):
         deprecation_warning('Response.code is deprecated, use Response.status', stacklevel=2)

@@ -203,7 +203,7 @@ def aes_cbc_encrypt(data, key, iv, *, padding_mode='pkcs7'):
 
 def aes_gcm_decrypt_and_verify(data, key, tag, nonce):
     """
-    Decrypt with aes in GBM mode and checks authenticity using tag
+    Decrypt with aes in GCM mode and check authenticity using tag
 
     @param {int[]} data        cipher
     @param {int[]} key         16-Byte cipher key
@@ -498,7 +498,7 @@ def block_product(block_x, block_y):
     # NIST SP 800-38D, Algorithm 1
 
     if len(block_x) != BLOCK_SIZE_BYTES or len(block_y) != BLOCK_SIZE_BYTES:
-        raise ValueError(f'Length of blocks need to be {BLOCK_SIZE_BYTES} bytes')
+        raise ValueError(f'Length of blocks needs to be {BLOCK_SIZE_BYTES} bytes')
 
     block_r = [0xE1] + [0] * (BLOCK_SIZE_BYTES - 1)
     block_v = block_y[:]

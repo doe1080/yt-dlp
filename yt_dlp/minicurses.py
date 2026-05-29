@@ -167,8 +167,8 @@ class MultilinePrinter(MultilinePrinterBase):
 
     @lock
     def end(self):
-        # move cursor to the end of the last line, and write line break
-        # so that other to_screen calls can precede
+        # move cursor to the end of the last line, and write a line break
+        # so that other to_screen calls can proceed
         text = self._move_cursor(self.maximum) if self._HAVE_FULLCAP else []
         if self.preserve_output:
             self.write(*text, '\n')

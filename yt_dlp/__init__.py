@@ -202,7 +202,7 @@ def validate_options(opts):
             return
         if not max_name:
             min_name, max_name = f'min {min_name}', f'max {min_name}'
-        raise ValueError(f'{max_name} "{max_val}" must be must be greater than or equal to {min_name} "{min_val}"')
+        raise ValueError(f'{max_name} "{max_val}" must be greater than or equal to {min_name} "{min_val}"')
 
     # Usernames and passwords
     validate(sum(map(bool, (opts.usenetrc, opts.netrc_cmd, opts.username))) <= 1, '.netrc',

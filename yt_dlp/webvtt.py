@@ -83,7 +83,7 @@ class ParseError(Exception):
 
 # While the specification <https://www.w3.org/TR/webvtt1/#webvtt-timestamp>
 # prescribes that hours must be *2 or more* digits, timestamps with a single
-# digit for the hour part has been seen in the wild.
+# digit for the hour part have been seen in the wild.
 # See https://github.com/yt-dlp/yt-dlp/issues/921
 _REGEX_TS = re.compile(r'''(?x)
     (?:([0-9]{1,}):)?

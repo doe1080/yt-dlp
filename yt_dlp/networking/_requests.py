@@ -69,14 +69,14 @@ if brotli is not None:
 Override urllib3's behavior to not convert lower-case percent-encoded characters
 to upper-case during url normalization process.
 
-RFC3986 defines that the lower or upper case percent-encoded hexidecimal characters are equivalent
+RFC3986 defines that the lower or upper case percent-encoded hexadecimal characters are equivalent
 and normalizers should convert them to uppercase for consistency [1].
 
 However, some sites may have an incorrect implementation where they provide
 a percent-encoded url that is then compared case-sensitively.[2]
 
 While this is a very rare case, since urllib does not do this normalization step, it
-is best to avoid it in requests too for compatability reasons.
+is best to avoid it in requests too for compatibility reasons.
 
 1: https://tools.ietf.org/html/rfc3986#section-2.1
 2: https://github.com/streamlink/streamlink/pull/4003
@@ -146,7 +146,7 @@ class RequestsResponseAdapter(Response):
                 (err for err in (e.__context__, e.__cause__, *variadic(e.args))
                  if isinstance(err, http.client.IncompleteRead)), None)
             if ir_err is not None:
-                # `urllib3.exceptions.IncompleteRead` is subclass of `http.client.IncompleteRead`
+                # `urllib3.exceptions.IncompleteRead` is a subclass of `http.client.IncompleteRead`
                 # but uses an `int` for its `partial` property.
                 partial = ir_err.partial if isinstance(ir_err.partial, int) else len(ir_err.partial)
                 raise IncompleteRead(partial=partial, expected=ir_err.expected) from e
@@ -352,7 +352,7 @@ class RequestsRH(RequestHandler, InstanceStoreMixin):
             raise TransportError(cause=e) from e
 
         except requests.exceptions.RequestException as e:
-            # Miscellaneous Requests exceptions. May not necessary be network related e.g. InvalidURL
+            # Miscellaneous Requests exceptions. May not necessarily be network related, e.g. InvalidURL
             raise RequestError(cause=e) from e
 
         res = RequestsResponseAdapter(requests_res)

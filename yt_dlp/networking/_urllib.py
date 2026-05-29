@@ -119,14 +119,14 @@ class HTTPHandler(urllib.request.AbstractHTTPHandler):
 
     @staticmethod
     def gz(data):
-        # There may be junk added the end of the file
+        # There may be junk added to the end of the file
         # We ignore it by only ever decoding a single gzip payload
         if not data:
             return data
         return zlib.decompress(data, wbits=zlib.MAX_WBITS | 16)
 
     def http_request(self, req):
-        # According to RFC 3986, URLs can not contain non-ASCII characters, however this is not
+        # According to RFC 3986, URLs cannot contain non-ASCII characters, however this is not
         # always respected by websites, some tend to give out URLs with non percent-encoded
         # non-ASCII characters (see telemb.py, ard.py [#3412])
         # urllib chokes on URLs with non-ASCII characters (see http://bugs.python.org/issue3991)
@@ -205,11 +205,11 @@ class RedirectHandler(urllib.request.HTTPRedirectHandler):
 
     The code is based on HTTPRedirectHandler implementation from CPython [1].
 
-    This redirect handler fixes and improves the logic to better align with RFC7261
+    This redirect handler fixes and improves the logic to better align with RFC9110
      and what browsers tend to do [2][3]
 
     1. https://github.com/python/cpython/blob/master/Lib/urllib/request.py
-    2. https://datatracker.ietf.org/doc/html/rfc7231
+    2. https://datatracker.ietf.org/doc/html/rfc9110
     3. https://github.com/python/cpython/issues/91306
     """
 
