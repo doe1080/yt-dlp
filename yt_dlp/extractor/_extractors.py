@@ -449,6 +449,7 @@ from .dlive import (
     DLiveStreamIE,
     DLiveVODIE,
 )
+from .dondora import DondoraOnlineIE
 from .douyutv import (
     DouyuShowIE,
     DouyuTVIE,
