@@ -140,7 +140,7 @@ class ExternalFD(FragmentFD):
 
     def _call_downloader(self, tmpfilename, info_dict):
         """ Either overwrite this or implement _make_cmd """
-        cmd = list(self._make_cmd(tmpfilename, info_dict))
+        cmd = self._make_cmd(tmpfilename, info_dict)
 
         self._debug_cmd(cmd)
 
