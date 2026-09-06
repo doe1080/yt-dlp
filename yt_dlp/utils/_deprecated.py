@@ -67,4 +67,16 @@ def random_uuidv4():
     return str(uuid.uuid4())
 
 
+def bytes_to_long(s):
+    return int.from_bytes(s, 'big')
+
+
+def long_to_bytes(n, blocksize=0):
+    n = max(0, int(n))
+    length = max(1, (n.bit_length() + 7) // 8)
+    if blocksize > 0:
+        length += -length % blocksize
+    return n.to_bytes(length, 'big')
+
+
 compiled_regex_type = type(re.compile(''))
