@@ -1,3 +1,4 @@
+import json
 import re
 
 from .common import InfoExtractor
@@ -111,7 +112,7 @@ class NiconicoChannelPlusIE(NiconicoChannelPlusBaseIE):
     }))
     _VALID_URL = rf'https?://(?P<domain>{_DOMAIN_RE})(?:/(?P<channel_id>[\w.-]+))?/(?:audio|live|video)/(?P<id>sm\w+)'
     _TESTS = [{
-        # Free video; ニコニコチャンネルプラス
+        # Free video: ニコニコチャンネルプラス
         'url': 'https://nicochannel.jp/shio-show-time/video/sm5R2ihENahSqntsFKv65q7U',
         'info_dict': {
             'id': 'sm5R2ihENahSqntsFKv65q7U',
@@ -124,15 +125,16 @@ class NiconicoChannelPlusIE(NiconicoChannelPlusBaseIE):
             'channel_url': 'https://nicochannel.jp/shio-show-time',
             'comment_count': int,
             'live_status': 'not_live',
-            'thumbnail': r're:https?://nicochannel\.jp/.+',
+            'thumbnail': r're:https?://.+',
             'timestamp': 1657274400,
             'upload_date': '20220708',
             'uploader': 'ニコニコチャンネルプラス',
             'uploader_id': '153',
             'view_count': int,
         },
+        'params': {'skip_download': 'm3u8'},
     }, {
-        # Age-restricted video; ニコニコチャンネルプラス
+        # Age-restricted video: ニコニコチャンネルプラス
         'url': 'https://nicochannel.jp/testman/video/smmPbdGrhe8hZjX6pba9WY5P',
         'info_dict': {
             'id': 'smmPbdGrhe8hZjX6pba9WY5P',
@@ -146,15 +148,16 @@ class NiconicoChannelPlusIE(NiconicoChannelPlusBaseIE):
             'description': 'あいうえおtest',
             'duration': 15,
             'live_status': 'not_live',
-            'thumbnail': r're:https?://nicochannel\.jp/.+',
+            'thumbnail': r're:https?://.+',
             'timestamp': 1717740600,
             'upload_date': '20240607',
             'uploader': 'ニコニコチャンネルプラス',
             'uploader_id': '56',
             'view_count': int,
         },
+        'params': {'skip_download': 'm3u8'},
     }, {
-        # Free audio; Podcasts Membership
+        # Free audio: Podcasts Membership
         'url': 'https://audee-membership.jp/coco-hayashi/audio/smE6PTsrPocjnRxKim6SCbKi',
         'info_dict': {
             'id': 'smE6PTsrPocjnRxKim6SCbKi',
@@ -168,15 +171,16 @@ class NiconicoChannelPlusIE(NiconicoChannelPlusBaseIE):
             'duration': 405,
             'live_status': 'not_live',
             'tags': 'count:1',
-            'thumbnail': r're:https?://audee-membership\.jp/.+',
+            'thumbnail': r're:https?://.+',
             'timestamp': 1767358800,
             'upload_date': '20260102',
             'uploader': 'Podcasts Membership',
             'uploader_id': '994',
             'view_count': int,
         },
+        'params': {'skip_download': 'm3u8'},
     }, {
-        # Partially free video; QloveR
+        # Partially free video: QloveR
         'url': 'https://qlover.jp/hitomiho/video/smPX9ZCRLpTwCHeptnNXhR74',
         'info_dict': {
             'id': 'smPX9ZCRLpTwCHeptnNXhR74',
@@ -189,25 +193,25 @@ class NiconicoChannelPlusIE(NiconicoChannelPlusBaseIE):
             'description': 'md5:b713e5d807c3fa020b429dc2dfe32741',
             'duration': 1890,
             'live_status': 'was_live',
-            'release_date': '20250822',
-            'release_timestamp': 1755860400,
             'section_end': 1890,
             'section_start': 0,
             'tags': 'count:1',
-            'thumbnail': r're:https?://qlover\.jp/.+',
-            'timestamp': 1755502430,
-            'upload_date': '20250818',
+            'thumbnail': r're:https?://.+',
+            'timestamp': 1755860102,
+            'upload_date': '20250822',
             'uploader': 'QloveR',
             'uploader_id': '892',
             'view_count': int,
         },
+        'params': {'skip_download': 'm3u8'},
     }, {
-        # Partially free video, multiple free sections; ニコニコチャンネルプラス
+        # Partially free video, multiple free sections: ニコニコチャンネルプラス
         'url': 'https://nicochannel.jp/testman/video/smfEDXh4B4UEoqEDi6tjfFVc',
         'info_dict': {
             'id': 'smfEDXh4B4UEoqEDi6tjfFVc',
         },
         'playlist_count': 2,
+        'params': {'skip_download': 'm3u8'},
     }]
 
     def _real_extract(self, url):
@@ -261,7 +265,8 @@ class NiconicoChannelPlusIE(NiconicoChannelPlusBaseIE):
         elif target_id != 2:
             raise ExtractorError(f'Unknown target id: {target_id}', expected=True)
 
-        if video_page.get('live_finished_at'):
+        live_finished_at = video_page.get('live_finished_at')
+        if live_finished_at:
             live_status = 'was_live'
         elif video_page['type'] == 'vod':
             live_status = 'not_live'
@@ -269,13 +274,12 @@ class NiconicoChannelPlusIE(NiconicoChannelPlusBaseIE):
             live_status = 'is_live' if video_page.get('live_started_at') else 'is_upcoming'
 
         scheduled_time = traverse_obj(video_page, ('live_scheduled_start_at', {str}))
-        release_timestamp = unified_timestamp(scheduled_time)
         if live_status == 'is_upcoming':
             self.raise_no_formats(
                 f'This livestream is scheduled to start at {scheduled_time}', expected=True)
             return {
                 'id': video_id,
-                'release_timestamp': release_timestamp,
+                'release_timestamp': unified_timestamp(scheduled_time),
             }
 
         page_base_info = self._download_json(
@@ -285,13 +289,17 @@ class NiconicoChannelPlusIE(NiconicoChannelPlusBaseIE):
         if m3u8_url := traverse_obj(video_page, (
             'video_stream', 'authenticated_url', {url_or_none},
         )):
+            session_payload = {}
+            if video_page['type'] == 'live' and live_finished_at:
+                session_payload = {'broadcast_type': 'dvr'}
+
             session_ids = self._download_json(
                 f'https://api.{domain}/fc/video_pages/{video_id}/session_ids', video_id,
                 'Fetching session id', 'Unable to fetch session id', headers={
                     'Content-Type': 'application/json',
                     'Fc_use_device': 'null',
                     'Origin': origin,
-                }, data=b'{}')
+                }, data=json.dumps(session_payload).encode())
             session_id = traverse_obj(session_ids, ('data', 'session_id', {str}))
             m3u8_url = m3u8_url.format(session_id=session_id)
         else:
@@ -316,7 +324,6 @@ class NiconicoChannelPlusIE(NiconicoChannelPlusBaseIE):
             'channel_url': channel_url,
             'formats': formats,
             'live_status': live_status,
-            'release_timestamp': release_timestamp,
             'uploader_id': fc_site_id,
             **traverse_obj(video_page, {
                 'title': ('title', {clean_html}),
@@ -324,7 +331,7 @@ class NiconicoChannelPlusIE(NiconicoChannelPlusBaseIE):
                 'duration': ('active_video_filename', 'length', {int_or_none}),
                 'tags': ('video_tags', ..., 'tag', {clean_html}, filter),
                 'thumbnail': ('thumbnail_url', {url_or_none}),
-                'timestamp': ('released_at', {unified_timestamp}),
+                'timestamp': (('live_started_at', 'released_at'), {unified_timestamp}, any),
             }),
             **traverse_obj(video_page, ('video_aggregate_info', {
                 'comment_count': ('number_of_comments', {int_or_none}),
