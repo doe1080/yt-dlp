@@ -1,7 +1,7 @@
 name: Core Tests
 on:
   push:
-    branches: ['master']
+    branches: ['master', 'pypy312-websockets']
     paths:
       - pyproject.toml
       - .github/workflows/core.yml
