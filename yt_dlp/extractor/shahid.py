@@ -1,3 +1,4 @@
+import datetime as dt
 import json
 import math
 import re
@@ -9,10 +10,14 @@ from ..utils import (
     InAdvancePagedList,
     clean_html,
     int_or_none,
+    parse_duration,
     parse_iso8601,
     str_or_none,
+    update_url,
+    url_or_none,
     urlencode_postdata,
 )
+from ..utils.traversal import require, traverse_obj
 
 
 class ShahidBaseIE(AWSIE):
@@ -215,3 +220,108 @@ class ShahidShowIE(ShahidBaseIE):
 
         return self.playlist_result(
             entries, show_id, show.get('title'), show.get('description'))
+
+
+class ShahidLiveIE(ShahidBaseIE):
+    _API_BASE = 'https://api3.shahid.net/proxy/v2.1'
+    _VALID_URL = r'https?://shahid\.mbc\.net/(?P<lang>[^/]+)/livestream/[^/]+/livechannel-(?P<id>\d+)'
+    _TESTS = [{
+        'url': 'https://shahid.mbc.net/en/livestream/MBC1/livechannel-387238',
+        'info_dict': {
+            'id': '387238',
+            'ext': 'mp4',
+            'title': str,
+            'channel': 'MBC1',
+            'channel_id': '387238',
+            'description': 'md5:082811f682fe90e56198e009fef7ad8d',
+            'duration': 3240,
+            'episode': 'Episode 3',
+            'episode_id': '968991',
+            'episode_number': 3,
+            'genres': 'count:2',
+            'live_status': 'is_live',
+            'release_year': 2022,
+            'season': 'Season 1',
+            'season_id': '966248',
+            'season_number': 1,
+            'series_id': '966247',
+            'thumbnail': r're:https?://.+',
+            'timestamp': 1790269500,
+            'upload_date': '20260924',
+        },
+        'params': {'skip_download': 'Livestream'},
+    }]
+
+    def _real_extract(self, url):
+        video_id, lang = self._match_valid_url(url).group('id', 'lang')
+        playout = self._download_json(
+            f'{self._API_BASE}/playout/new/url/{video_id}',
+            video_id, query={'outputParameter': 'vmap'})['playout']
+        if playout.get('drm'):
+            self.report_drm(video_id)
+
+        m3u8_url = traverse_obj(playout, ('url', {url_or_none}, {require('m3u8 URL')}))
+        formats, subtitles = self._extract_m3u8_formats_and_subtitles(m3u8_url, video_id, 'mp4')
+
+        page_request = json.dumps({'pageAlias': 'livestream', 'profileFolder': 'WW'}).encode()
+        page = self._download_json(
+            f'{self._API_BASE}/editorial/page', video_id, query={'request': page_request})
+        carousel_id = traverse_obj(page, (
+            'carousels', ..., 'id', {str}, filter, any, {require('carousel ID')}))
+
+        carousel_request = json.dumps({'id': carousel_id}).encode()
+        carousel = self._download_json(
+            f'{self._API_BASE}/editorial/carousel',
+            video_id, query={'request': carousel_request})
+        product = traverse_obj(carousel, (
+            'editorialItems', lambda _, v: str_or_none(v['item']['id']) == video_id,
+            'item', {dict}, any))
+
+        now = dt.datetime.now().astimezone()
+
+        def epg_time(**kwargs):
+            return now.replace(**kwargs).astimezone(
+                dt.timezone.utc).isoformat(timespec='milliseconds').replace('+00:00', 'Z')
+
+        epg = self._download_json(
+            f'{self._API_BASE}/shahid-epg-api/', video_id, query={
+                'csvChannelIds': video_id,
+                'language': lang,
+                'from': epg_time(hour=0, minute=0, second=0, microsecond=0),
+                'to': epg_time(hour=23, minute=59, second=59, microsecond=999000),
+            })
+
+        epg_now = traverse_obj(epg, ('serverCurrentTimestampUTC', {parse_iso8601}))
+        program = traverse_obj(epg, ('items', ..., 'items', lambda _, v: (
+            parse_iso8601(v.get('actualFrom')) <= epg_now < parse_iso8601(v.get('actualTo'))
+        ), {dict}, any))
+        if traverse_obj(program, ('emptySlot', {bool})):
+            program = {}
+
+        return {
+            'id': video_id,
+            'is_live': True,
+            'formats': formats,
+            'subtitles': subtitles,
+            **traverse_obj(product, {
+                'title': ('title', {clean_html}, filter),
+                'channel': ('title', {clean_html}, filter),
+                'channel_id': ('id', {str_or_none}),
+                'description': ('description', {clean_html}, filter),
+                'thumbnail': ('thumbnailImage', {url_or_none}, {update_url(query=None)}),
+            }),
+            **traverse_obj(program, {
+                'title': ('title', {clean_html}, filter),
+                'description': ('description', {clean_html}, filter),
+                'duration': ('duration', {str}, {lambda x: parse_duration(x.rsplit(':', 1)[0])}),
+                'episode_id': ('productId', {str_or_none}),
+                'episode_number': ('episodeNumber', {int_or_none}),
+                'genres': ('genres', ..., {clean_html}, filter, all, filter),
+                'release_year': ('productionYear', {int_or_none}),
+                'season_id': ('seasonId', {str_or_none}),
+                'season_number': ('seasonNumber', {int_or_none}),
+                'series_id': ('showId', {str_or_none}),
+                'thumbnail': ('productPoster', {url_or_none}, {update_url(query=None)}),
+                'timestamp': ('actualFrom', {parse_iso8601}),
+            }),
+        }
