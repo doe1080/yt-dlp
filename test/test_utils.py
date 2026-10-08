@@ -848,6 +848,8 @@ class TestUtil(unittest.TestCase):
         self.assertEqual(update_url_query(
             'http://example.com/path', {'filter': 'type(image/png)'}, safe='()'),
             'http://example.com/path?filter=type(image%2Fpng)')
+        self.assertRaises(
+            AssertionError, update_url_query, 'http://example.com/path', {}, safe='()')
 
     def test_multipart_encode(self):
         self.assertEqual(

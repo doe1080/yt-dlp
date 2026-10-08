@@ -2599,9 +2599,10 @@ def update_url(url, *, query_update=None, safe='', **kwargs):
     """Replace URL components specified by kwargs
        @param url           str or parse url tuple
        @param query_update  update query
-       @param safe          characters not percent-encoded in query
+       @param safe          characters not percent-encoded in query, requires non-empty query_update
        @returns             str
     """
+    assert query_update or not safe, 'safe requires query_update'
     if isinstance(url, str):
         if not kwargs and not query_update:
             return url
