@@ -88,6 +88,27 @@ class KickBaseIE(InfoExtractor):
             })),
         }
 
+    @staticmethod
+    def _extract_clip_metadata(clip_data):
+        return {
+            **traverse_obj(clip_data, {
+                'title': ('title', {clean_html}, filter),
+                'age_limit': ('is_mature', {bool}, {lambda x: 18 if x else None}),
+                'categories': ('category', 'name', {clean_html}, filter, all, filter),
+                'duration': ('duration', {int_or_none}),
+                'like_count': (('likes_count', 'likes'), {int_or_none}, any),
+                'thumbnail': ('thumbnail_url', {url_or_none}),
+                'timestamp': ('created_at', {parse_iso8601}),
+                'view_count': (('views_count', 'view_count', 'views'), {int_or_none}, any),
+            }),
+            **traverse_obj(clip_data, ('channel', {
+                'channel': ('username', {str}, filter),
+                'channel_id': ('id', {int}, {str_or_none}),
+                'uploader': ('username', {str}, filter),
+                'uploader_id': ('slug', {str}, filter),
+            })),
+        }
+
 
 class KickIE(KickBaseIE):
     IE_NAME = 'kick:live'
@@ -281,36 +302,36 @@ class KickClipIE(KickBaseIE):
             'id': 'clip_01GYXVB5Y8PWAPWCWMSBCFB05X',
             'ext': 'mp4',
             'title': 'Maddy detains Abd D:',
+            'age_limit': 18,
+            'categories': ['VALORANT'],
             'channel': 'Mxddy',
             'channel_id': '133789',
-            'uploader': 'Mxddy',
-            'uploader_id': 'mxddy',
-            'thumbnail': r're:https?://.+',
             'duration': 35,
+            'like_count': int,
+            'thumbnail': r're:https?://.+',
             'timestamp': 1682481453,
             'upload_date': '20230426',
+            'uploader': 'Mxddy',
+            'uploader_id': 'mxddy',
             'view_count': int,
-            'like_count': int,
-            'categories': ['VALORANT'],
-            'age_limit': 18,
         },
     }, {
         'url': 'https://kick.com/destiny?clip=clip_01H9SKET879NE7N9RJRRDS98J3',
         'info_dict': {
             'id': 'clip_01H9SKET879NE7N9RJRRDS98J3',
-            'title': 'W jews',
             'ext': 'mp4',
+            'title': 'W jews',
+            'categories': ['Just Chatting'],
             'channel': 'Destiny',
             'channel_id': '1772249',
+            'duration': 49,
+            'like_count': int,
+            'thumbnail': r're:https?://.+',
+            'timestamp': 1694150180,
+            'upload_date': '20230908',
             'uploader': 'Destiny',
             'uploader_id': 'destiny',
-            'duration': 49,
-            'upload_date': '20230908',
-            'timestamp': 1694150180,
-            'thumbnail': r're:https?://.+',
             'view_count': int,
-            'like_count': int,
-            'categories': ['Just Chatting'],
         },
         'params': {'skip_download': 'm3u8'},
     }, {
@@ -319,35 +340,31 @@ class KickClipIE(KickBaseIE):
             'id': 'clip_01J8RGZRKHXHXXKJEHGRM932A5',
             'ext': 'mp4',
             'title': 'KLJASLDJKLJKASDLJKDAS',
+            'categories': ['Just Chatting'],
             'channel': 'Spreen',
             'channel_id': '5312671',
+            'duration': 43,
+            'like_count': int,
+            'thumbnail': r're:https?://.+',
+            'timestamp': 1727399987,
+            'upload_date': '20240927',
             'uploader': 'Spreen',
             'uploader_id': 'spreen',
-            'duration': 43,
-            'upload_date': '20240927',
-            'timestamp': 1727399987,
-            'thumbnail': r're:https?://.+',
             'view_count': int,
-            'like_count': int,
-            'categories': ['Just Chatting'],
         },
         'params': {'skip_download': 'm3u8'},
     }]
 
     def _real_extract(self, url):
-        url, smuggled_data = unsmuggle_url(url, {})
         clip_id = self._match_id(url)
+        clip = self._call_api(
+            f'v2/clips/{clip_id}', clip_id, expected_status=404)
+        if err_msg := traverse_obj(clip, (
+            'message', {clean_html}, filter,
+        )):
+            raise ExtractorError(err_msg, expected=True)
 
-        clip_data = traverse_obj(smuggled_data, ('clip_data', {dict}))
-        if not clip_data:
-            clip = self._call_api(
-                f'v2/clips/{clip_id}', clip_id, expected_status=404)
-            if err_msg := traverse_obj(clip, (
-                'message', {clean_html}, filter,
-            )):
-                raise ExtractorError(err_msg, expected=True)
-            clip_data = traverse_obj(clip, ('clip', {dict}))
-
+        clip_data = traverse_obj(clip, ('clip', {dict}))
         clip_url = traverse_obj(clip_data, (
             ('playback_url', 'clip_url', 'video_url'),
             {url_or_none}, any, {require('clip source URL')}))
@@ -359,22 +376,7 @@ class KickClipIE(KickBaseIE):
         return {
             'id': clip_id,
             'formats': formats,
-            **traverse_obj(clip_data, {
-                'title': ('title', {clean_html}, filter),
-                'age_limit': ('is_mature', {bool}, {lambda x: 18 if x else None}),
-                'categories': ('category', 'name', {clean_html}, filter, all, filter),
-                'duration': ('duration', {int_or_none}),
-                'like_count': (('likes_count', 'likes'), {int_or_none}, any),
-                'thumbnail': ('thumbnail_url', {url_or_none}),
-                'timestamp': ('created_at', {parse_iso8601}),
-                'view_count': (('views_count', 'view_count', 'views'), {int_or_none}, any),
-            }),
-            **traverse_obj(clip_data, ('channel', {
-                'channel': ('username', {str}, filter),
-                'channel_id': ('id', {int}, {str_or_none}),
-                'uploader': ('username', {str}, filter),
-                'uploader_id': ('slug', {str}, filter),
-            })),
+            **self._extract_clip_metadata(clip_data),
         }
 
 
@@ -461,10 +463,9 @@ class KickClipsIE(KickBaseIE):
             )):
                 clip_id = clip_data['id']
 
-                yield self.url_result(smuggle_url(
+                yield self.url_result(
                     f'{self._BASE_URL}/{channel_slug}/clips/{clip_id}',
-                    {'clip_data': clip_data},
-                ), KickClipIE, clip_id)
+                    KickClipIE, clip_id, **self._extract_clip_metadata(clip_data))
 
             cursor = traverse_obj(clips, ('data', 'cursor', {str}, filter))
             if not cursor:
