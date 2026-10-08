@@ -2,7 +2,6 @@ import urllib.parse
 import xml.etree.ElementTree
 
 from .common import InfoExtractor
-from ..networking import HEADRequest
 from ..utils import (
     ExtractorError,
     int_or_none,
