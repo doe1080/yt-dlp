@@ -37,6 +37,7 @@ from test.helper import (
 )
 from yt_dlp.cookies import YoutubeDLCookieJar
 from yt_dlp.dependencies import brotli, curl_cffi, requests, urllib3
+from yt_dlp.extractor.generic import GenericIE
 from yt_dlp.networking import (
     HEADRequest,
     PATCHRequest,
@@ -1725,10 +1726,34 @@ class TestYoutubeDLNetworking:
             with pytest.raises(AssertionError):
                 ydl.urlopen(None)
 
-    def test_extract_basic_auth(self):
+    @pytest.mark.parametrize('url,expected_url,auth_header', [
+        ('http://user:pass@foo.bar', 'http://foo.bar', 'Basic dXNlcjpwYXNz'),
+        ('http://u%40ser:p%3Ass@[2001:db8::1]:080/a', 'http://[2001:db8::1]:080/a', 'Basic dUBzZXI6cDpzcw=='),
+    ])
+    def test_extract_basic_auth(self, url, expected_url, auth_header):
         with FakeRHYDL() as ydl:
-            res = ydl.urlopen(Request('http://user:pass@foo.bar'))
-            assert res.request.headers['Authorization'] == 'Basic dXNlcjpwYXNz'
+            res = ydl.urlopen(Request(url))
+            assert res.request.url == expected_url
+            assert res.request.headers['Authorization'] == auth_header
+
+    @pytest.mark.parametrize('url,response_url,redirect', [
+        ('http://user:pass@EXAMPLE.com:080/a.mp4', 'http://example.com/a.mp4', False),
+        ('http://user:pass@[0:0:0:0:0:0:0:1]:080/a.mp4', 'http://[::1]:80/a.mp4', False),
+        ('http://user:pass@example.com/a.mp4?#', 'http://example.com/a.mp4', False),
+        ('http://user:pass@example.com/a.mp4', 'http://example.com/b.mp4', True),
+        ('http://user:pass@example.com/a.mp4', 'http://other.example/a.mp4', True),
+        ('http://user:pass@example.com/a.mp4', 'http://other:pass@example.com/a.mp4', True),
+    ])
+    def test_generic_basic_auth(self, url, response_url, redirect):
+        with FakeYDL() as ydl:
+            ie = GenericIE(ydl)
+            ie._request_webpage = MagicMock(return_value=Response(
+                io.BytesIO(), url=response_url, headers={'Content-Type': 'video/mp4'}))
+            info = ie.extract(url)
+            if redirect:
+                assert info == ie.url_result(response_url)
+            else:
+                assert info['formats'][0]['url'] == url
 
     def test_sanitize_url(self):
         with FakeRHYDL() as ydl:

@@ -1,3 +1,5 @@
+import contextlib
+import ipaddress
 import os
 import re
 import types
@@ -9,6 +11,7 @@ from .commonprotocols import RtmpIE
 from .youtube import YoutubeIE
 from ..compat import compat_etree_fromstring
 from ..cookies import LenientSimpleCookie
+from ..networking import Request
 from ..networking.exceptions import HTTPError
 from ..networking.impersonate import ImpersonateTarget
 from ..utils import (
@@ -19,7 +22,6 @@ from ..utils import (
     determine_ext,
     determine_protocol,
     dict_get,
-    extract_basic_auth,
     filter_dict,
     format_field,
     int_or_none,
@@ -816,7 +818,8 @@ class GenericIE(InfoExtractor):
         # It may probably better to solve this by checking Content-Type for application/octet-stream
         # after a HEAD request, but not sure if we can rely on this.
         try:
-            full_response = self._request_webpage(url, video_id, headers=filter_dict({
+            request = Request(url)
+            full_response = self._request_webpage(request, video_id, headers=filter_dict({
                 'Accept-Encoding': 'identity',
                 'Referer': smuggled_data.get('referer'),
             }), impersonate=impersonate)
@@ -843,7 +846,29 @@ class GenericIE(InfoExtractor):
                 f'{msg}try again with  --extractor-args "generic:impersonate"', expected=True)
 
         new_url = full_response.url
-        if new_url != extract_basic_auth(url)[0]:
+        old_url = request.url
+        if new_url != old_url:
+            old_parts = urllib.parse.urlsplit(old_url)
+            new_parts = urllib.parse.urlsplit(new_url)
+
+            def host_port(parts):
+                host = parts.hostname
+                if host and ':' in host:
+                    with contextlib.suppress(ValueError):
+                        host = ipaddress.IPv6Address(host)
+                port = parts.port
+                if port is None:
+                    port = 80 if parts.scheme == 'http' else 443
+                return host, port
+
+            if (
+                new_parts.scheme in ('http', 'https')
+                and old_parts.scheme == new_parts.scheme
+                and new_parts.username is None
+                and host_port(old_parts) == host_port(new_parts)
+            ):
+                old_url = old_url.replace(f'//{old_parts.netloc}', f'//{new_parts.netloc}', 1)
+        if new_url != old_url:
             self.report_following_redirect(new_url)
             if force_videoid:
                 new_url = smuggle_url(new_url, {'force_videoid': force_videoid})

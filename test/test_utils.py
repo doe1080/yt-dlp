@@ -2241,6 +2241,43 @@ Line 1
         assert extract_basic_auth('http://user:@foo.bar') == ('http://foo.bar', 'Basic dXNlcjo=')
         assert extract_basic_auth('http://user:pass@foo.bar') == ('http://foo.bar', 'Basic dXNlcjpwYXNz')
 
+        for url in (
+            'http://EXAMPLE.com:080/a%2Fb?x=user:pass@foo.bar#part',
+            'http://[2001:db8::1]:8080/a',
+            '//foo.bar/a?#',
+            'http://foo.bar/a?',
+            'http://foo.bar/a#',
+            'http://foo.bar/a#?x=1',
+        ):
+            with self.subTest(url=url):
+                self.assertEqual(
+                    extract_basic_auth(url.replace('//', '//user:pass@', 1)),
+                    (url, 'Basic dXNlcjpwYXNz'))
+        self.assertEqual(
+            extract_basic_auth('http://us\ter:pa\nss@foo.bar/a?#'),
+            ('http://foo.bar/a?#', 'Basic dXNlcjpwYXNz'))
+
+        for userinfo, auth_header in (
+            ('user', 'Basic dXNlcjo='),
+            ('%75ser:p%40ss', 'Basic dXNlcjpwQHNz'),
+            ('user:pa%3Ass:word', 'Basic dXNlcjpwYTpzczp3b3Jk'),
+            ('u+ser:p+ss', 'Basic dStzZXI6cCtzcw=='),
+            ('user:p%2540ss', 'Basic dXNlcjpwJTQwc3M='),
+            ('üs%65r:p%C3%A4ss', 'Basic w7xzZXI6cMOkc3M='),
+            ('user:p%FFss', 'Basic dXNlcjpw/3Nz'),
+            ('user:p%_ss', 'Basic dXNlcjpwJV9zcw=='),
+        ):
+            with self.subTest(userinfo=userinfo):
+                self.assertEqual(
+                    extract_basic_auth(f'http://{userinfo}@foo.bar'),
+                    ('http://foo.bar', auth_header))
+
+        for userinfo in ('user%3Aname:pass', 'user%00:pass', 'user:pass%7F'):
+            with self.subTest(userinfo=userinfo):
+                self.assertRaisesRegex(
+                    ValueError, 'Invalid Basic authentication credentials',
+                    extract_basic_auth, f'http://{userinfo}@foo.bar')
+
     @unittest.skipUnless(os.name == 'nt', 'Only relevant on Windows')
     def test_windows_escaping(self):
         tests = [

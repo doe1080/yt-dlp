@@ -756,11 +756,19 @@ def extract_basic_auth(url):
     parts = urllib.parse.urlsplit(url)
     if parts.username is None:
         return url, None
-    url = urllib.parse.urlunsplit(parts._replace(netloc=(
-        parts.hostname if parts.port is None
-        else f'{parts.hostname}:{parts.port}')))
-    auth_payload = base64.b64encode(
-        ('{}:{}'.format(parts.username, parts.password or '')).encode())
+
+    username = urllib.parse.unquote_to_bytes(parts.username)
+    password = urllib.parse.unquote_to_bytes(parts.password or '')
+    if b':' in username or re.search(rb'[\x00-\x1f\x7f]', username + password):
+        raise ValueError('Invalid Basic authentication credentials')
+
+    url = ''.join((
+        f'{parts.scheme}:' if parts.scheme else '',
+        '//', parts.netloc.rpartition('@')[2], parts.path,
+        f'?{parts.query}' if '?' in url.partition('#')[0] else '',
+        f'#{parts.fragment}' if '#' in url else '',
+    ))
+    auth_payload = base64.b64encode(username + b':' + password)
     return url, f'Basic {auth_payload.decode()}'
 
 
